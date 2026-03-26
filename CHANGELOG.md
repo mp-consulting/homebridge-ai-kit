@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-03-26
+
+### Changed
+
+- **Tooling**: Migrated to Vitest v4, ESLint 9 flat config, standardized devDependencies
+- **Tests**: Moved tests from `src/__tests__/` to `test/`
+- **CI**: Standardized CI workflow and added npm publish workflow on release
+- **Dependencies**: Updated all dependencies to latest compatible versions
+
 ## [1.0.1] - 2026-02-22
 
 ### Added
