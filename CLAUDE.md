@@ -42,6 +42,7 @@ Tests mirror the source structure under `src/__tests__/`.
 - Each `tools/*.ts` file exports a `register(server, client)` function that registers MCP tools on the server instance.
 - `HomebridgeClient` handles all HTTP communication with the Homebridge REST API, including JWT auth with automatic token refresh.
 - The server uses stdio transport (`StdioServerTransport`).
+- **Custom UI**: Uses Homebridge custom UI framework (`homebridge-ui/`) for plugin configuration management
 
 ## Environment Variables
 
