@@ -1,6 +1,11 @@
 name: CI
 
-on: [push, pull_request]
+# Pushes are only built on main. A branch with an open pull request would otherwise
+# run the whole matrix twice: once for the push event and once for the pull_request.
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   build:
