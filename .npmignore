@@ -13,7 +13,7 @@ tmp/
 .gitignore
 tsconfig.json
 eslint.config.js
-vitest.config.ts
+vitest.config.mts
 nodemon.json
 CLAUDE.md
 
