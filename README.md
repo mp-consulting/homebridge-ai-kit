@@ -9,6 +9,7 @@ MCP (Model Context Protocol) server for [Homebridge](https://homebridge.io) — 
 - **Configuration** — Read and update your `config.json`
 - **Plugins** — List installed plugins, search npm, view config schemas and changelogs
 - **System Info** — CPU, memory, OS, and network details of the host machine
+- **Logs** — Read recent Homebridge log output and search it for errors or specific devices
 
 ## Prerequisites
 
@@ -115,6 +116,18 @@ npx @modelcontextprotocol/inspector homebridge-mcp-server
 | Tool | Description |
 |------|-------------|
 | `get_system_info` | Get host system information (CPU, memory, OS) |
+
+### Logs
+
+| Tool | Description |
+|------|-------------|
+| `get_recent_logs` | Return the most recent lines from the Homebridge log |
+| `search_logs` | Search the log by substring or regex, returning the most recent matches |
+
+> The log tools read the log through the Homebridge UI, so they work against a remote
+> instance like every other tool. They require a Homebridge install managed by
+> [hb-service](https://github.com/homebridge/homebridge-config-ui-x/wiki/Homebridge-Service-Command),
+> which is what makes the log file available over the API.
 
 ## Example Prompts
 

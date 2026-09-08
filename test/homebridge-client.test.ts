@@ -297,6 +297,16 @@ describe('HomebridgeClient', () => {
       expect(result).toEqual({ cpu: {} });
     });
 
+    it('getLogFile → GET /api/platform-tools/hb-service/log/download', async () => {
+      const client = await clientWithAuth();
+      fetchMock.mockResolvedValueOnce(textResponse('[9/8/2026] Homebridge is running\n'));
+      const result = await client.getLogFile();
+      expect(fetchMock.mock.calls[1][0]).toBe(
+        'http://localhost:8581/api/platform-tools/hb-service/log/download',
+      );
+      expect(result).toBe('[9/8/2026] Homebridge is running\n');
+    });
+
     it('throws on non-ok API response', async () => {
       const client = await clientWithAuth();
       fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));

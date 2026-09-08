@@ -1,6 +1,6 @@
 {
   "name": "@mp-consulting/homebridge-mcp-server",
-  "version": "1.0.7",
+  "version": "1.1.0",
   "description": "MCP (Model Context Protocol) server for Homebridge — control smart home accessories, manage plugins, and monitor your Homebridge server from AI assistants.",
   "type": "module",
   "main": "dist/index.js",

@@ -220,4 +220,14 @@ export class HomebridgeClient {
   async getSystemInfo(): Promise<unknown> {
     return this.request('GET', '/api/platform-tools/system-information');
   }
+
+  // ── Logs ────────────────────────────────────────────────────────
+
+  /**
+   * Download the Homebridge log file as plain text. The UI strips ANSI colour
+   * codes for us unless `colour=yes` is passed. Requires an hb-service install.
+   */
+  async getLogFile(): Promise<string> {
+    return this.request<string>('GET', '/api/platform-tools/hb-service/log/download');
+  }
 }
