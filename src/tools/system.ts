@@ -1,23 +1,14 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { HomebridgeClient } from '../homebridge-client.js';
+import type { RegisterTools } from '../types.js';
+import { READ, handle, jsonResult } from './helpers.js';
 
-export function register(server: McpServer, client: HomebridgeClient): void {
-  server.tool(
+export const register: RegisterTools = (tool, client) => {
+  tool(
     'get_system_info',
-    'Get system information for the machine running Homebridge (CPU, memory, OS, network interfaces, uptime).',
-    {},
-    async () => {
-      try {
-        const info = await client.getSystemInfo();
-        return {
-          content: [{ type: 'text', text: JSON.stringify(info, null, 2) }],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text', text: `Error getting system info: ${error}` }],
-          isError: true,
-        };
-      }
+    {
+      title: 'Host system info',
+      description: 'Get system information for the machine running Homebridge (CPU, memory, OS, network interfaces, uptime).',
+      annotations: READ,
     },
+    handle('getting system info', async () => jsonResult(await client.getSystemInfo())),
   );
-}
+};
