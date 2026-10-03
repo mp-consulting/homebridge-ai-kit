@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { HomebridgeClient } from '../../src/homebridge-client.js';
-import { register } from '../../src/tools/logs.js';
-
-type ToolHandler = (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }>;
+import { SEARCH_BUDGET_MS, register } from '../../src/tools/logs.js';
+import { collectHandlers } from '../helpers.js';
 
 const ESC = '\u001B';
 
@@ -12,32 +10,20 @@ function coloured(plugin: string, message: string): string {
   return `${ESC}[37m[9/8/2026, 2:03:58 AM]${ESC}[39m ${ESC}[36m[${plugin}]${ESC}[39m ${message}`;
 }
 
-function mockClient(log: string): HomebridgeClient {
+function mockClient(log: string, truncated = false): HomebridgeClient {
   return {
-    getLogFile: vi.fn().mockResolvedValue(log),
+    getLogTail: vi.fn().mockResolvedValue({ text: log, truncated }),
   } as unknown as HomebridgeClient;
 }
 
 function failingClient(error: Error): HomebridgeClient {
   return {
-    getLogFile: vi.fn().mockRejectedValue(error),
+    getLogTail: vi.fn().mockRejectedValue(error),
   } as unknown as HomebridgeClient;
 }
 
 function extractToolHandlers(client: HomebridgeClient) {
-  const server = new McpServer({ name: 'test', version: '0.0.0' });
-  const handlers = new Map<string, ToolHandler>();
-  const origTool = server.tool.bind(server);
-
-  vi.spyOn(server, 'tool').mockImplementation((...args: unknown[]) => {
-    const handler = args[args.length - 1] as ToolHandler;
-    const name = args[0] as string;
-    handlers.set(name, handler);
-    return origTool(...(args as Parameters<typeof origTool>));
-  });
-
-  register(server, client);
-  return handlers;
+  return collectHandlers(register, client);
 }
 
 describe('log tools', () => {
@@ -141,7 +127,7 @@ describe('log tools', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('Invalid regex');
-      expect(client.getLogFile).not.toHaveBeenCalled();
+      expect(client.getLogTail).not.toHaveBeenCalled();
     });
 
     it('reports errors from the client', async () => {
@@ -153,24 +139,37 @@ describe('log tools', () => {
     });
   });
 
-  describe('truncation', () => {
-    const MAX_CHARS = 16 * 1024 * 1024;
-
-    it('keeps only the tail and drops the leading partial line', async () => {
-      const filler = 'x'.repeat(MAX_CHARS);
-      const log = `${filler}\nlast line\n`;
+  describe('regex safety', () => {
+    it('stops a catastrophically backtracking regex within the budget', async () => {
+      // Without the worker this single line blocks the event loop for minutes.
+      const log = `${'a'.repeat(40)}!\n`;
       const handlers = extractToolHandlers(mockClient(log));
+      const started = Date.now();
+      const result = await handlers.get('search_logs')!({ pattern: '^(a+)+$', regex: true });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(`exceeded ${SEARCH_BUDGET_MS}ms`);
+      expect(Date.now() - started).toBeLessThan(SEARCH_BUDGET_MS + 2000);
+    }, SEARCH_BUDGET_MS + 5000);
+
+    it('applies the case-insensitive flag inside the worker', async () => {
+      const handlers = extractToolHandlers(mockClient('Warning: x\nok\n'));
+      const result = await handlers.get('search_logs')!({ pattern: '^warn', regex: true });
+
+      expect(result.content[0].text).toContain('Showing 1 of 1 match');
+    });
+  });
+
+  describe('truncation', () => {
+    it('drops the leading partial line of a truncated read', async () => {
+      const handlers = extractToolHandlers(mockClient('xxxx partial\nlast line\n', true));
       const result = await handlers.get('get_recent_logs')!({});
 
-      expect(result.content[0].text).toContain('only the most recent 16 MB was read');
-      // The truncated head of the filler line is dropped, not shown as garbage.
-      expect(result.content[0].text).toContain('last line');
-      expect(result.content[0].text).not.toContain('xxxx');
+      expect(result.content[0].text).toBe('Log is large; only the most recent 16 MB was read.\n\nlast line');
     });
 
     it('flags truncation in search results', async () => {
-      const log = 'x'.repeat(MAX_CHARS) + '\nerror here\n';
-      const handlers = extractToolHandlers(mockClient(log));
+      const handlers = extractToolHandlers(mockClient('partial\nerror here\n', true));
       const result = await handlers.get('search_logs')!({ pattern: 'error' });
 
       expect(result.content[0].text).toContain('Showing 1 of 1 match');

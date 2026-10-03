@@ -12,6 +12,7 @@ tmp/
 .github/
 .gitignore
 tsconfig.json
+tsconfig.test.json
 eslint.config.js
 vitest.config.mts
 nodemon.json

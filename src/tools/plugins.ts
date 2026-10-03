@@ -1,142 +1,108 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { HomebridgeClient } from '../homebridge-client.js';
+import type { RegisterTools } from '../types.js';
+import { READ, READ_REGISTRY, handle, jsonResult, pick, textResult } from './helpers.js';
 
-export function register(server: McpServer, client: HomebridgeClient): void {
-  server.tool(
+const INSTALLED_FIELDS = [
+  'name',
+  'displayName',
+  'installedVersion',
+  'latestVersion',
+  'updateAvailable',
+  'verifiedPlugin',
+  'disabled',
+] as const;
+
+const SEARCH_FIELDS = [
+  'name',
+  'displayName',
+  'description',
+  'latestVersion',
+  'lastUpdated',
+  'verifiedPlugin',
+  'installedVersion',
+] as const;
+
+const pluginName = z.string().min(1).describe("The npm package name of the plugin (e.g. 'homebridge-hue')");
+const verbose = z.boolean().optional().describe('Return every field the API provides (large). Default false.');
+
+export const register: RegisterTools = (tool, client) => {
+  tool(
     'list_plugins',
-    'List all currently installed Homebridge plugins with their versions and update status.',
-    {},
-    async () => {
-      try {
-        const plugins = await client.getPlugins();
-        return {
-          content: [{ type: 'text', text: JSON.stringify(plugins, null, 2) }],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text', text: `Error listing plugins: ${error}` }],
-          isError: true,
-        };
-      }
+    {
+      title: 'List installed plugins',
+      description:
+        'List all currently installed Homebridge plugins with their versions and update status. ' +
+        'Pass verbose=true for every field (links, engines, install path, keywords, ...).',
+      inputSchema: { verbose },
+      annotations: READ,
     },
+    handle('listing plugins', async ({ verbose }) => {
+      const plugins = await client.getPlugins();
+      return jsonResult(verbose ? plugins : plugins.map((p) => pick(p, INSTALLED_FIELDS)));
+    }),
   );
 
-  server.tool(
+  tool(
     'search_plugins',
-    'Search the npm registry for Homebridge plugins matching a query.',
     {
-      query: z.string().describe("Search query (e.g. 'hue', 'camera', 'thermostat')"),
+      title: 'Search plugins',
+      description: 'Search the npm registry for Homebridge plugins matching a query. Pass verbose=true for every field.',
+      inputSchema: {
+        query: z.string().min(1).describe("Search query (e.g. 'hue', 'camera', 'thermostat')"),
+        verbose,
+      },
+      annotations: READ_REGISTRY,
     },
-    async ({ query }) => {
-      try {
-        const results = await client.searchPlugins(query);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(results, null, 2) }],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text', text: `Error searching plugins: ${error}` }],
-          isError: true,
-        };
-      }
-    },
+    handle('searching plugins', async ({ query, verbose }) => {
+      const results = await client.searchPlugins(query);
+      return jsonResult(verbose ? results : results.map((p) => pick(p, SEARCH_FIELDS)));
+    }),
   );
 
-  server.tool(
+  tool(
     'lookup_plugin',
-    'Get detailed information about a specific Homebridge plugin from the npm registry.',
     {
-      pluginName: z
-        .string()
-        .describe("The npm package name of the plugin (e.g. 'homebridge-hue')"),
+      title: 'Look up plugin',
+      description: 'Get detailed information about a specific Homebridge plugin from the npm registry.',
+      inputSchema: { pluginName },
+      annotations: READ_REGISTRY,
     },
-    async ({ pluginName }) => {
-      try {
-        const plugin = await client.lookupPlugin(pluginName);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(plugin, null, 2) }],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text', text: `Error looking up plugin: ${error}` }],
-          isError: true,
-        };
-      }
-    },
+    handle('looking up plugin', async ({ pluginName }) => jsonResult(await client.lookupPlugin(pluginName))),
   );
 
-  server.tool(
+  tool(
     'get_plugin_versions',
-    'Get available versions and dist-tags for a specific Homebridge plugin.',
     {
-      pluginName: z
-        .string()
-        .describe("The npm package name of the plugin (e.g. 'homebridge-hue')"),
+      title: 'Plugin versions',
+      description: 'Get available versions and dist-tags for a specific Homebridge plugin.',
+      inputSchema: { pluginName },
+      annotations: READ_REGISTRY,
     },
-    async ({ pluginName }) => {
-      try {
-        const versions = await client.getPluginVersions(pluginName);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(versions, null, 2) }],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text', text: `Error getting plugin versions: ${error}` }],
-          isError: true,
-        };
-      }
-    },
+    handle('getting plugin versions', async ({ pluginName }) => jsonResult(await client.getPluginVersions(pluginName))),
   );
 
-  server.tool(
+  tool(
     'get_plugin_config_schema',
-    'Get the config.schema.json for a plugin, which describes how to configure it in Homebridge.',
     {
-      pluginName: z
-        .string()
-        .describe("The npm package name of the plugin (e.g. 'homebridge-hue')"),
+      title: 'Plugin config schema',
+      description: 'Get the config.schema.json for a plugin, which describes how to configure it in Homebridge.',
+      inputSchema: { pluginName },
+      annotations: READ,
     },
-    async ({ pluginName }) => {
-      try {
-        const schema = await client.getPluginConfigSchema(pluginName);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(schema, null, 2) }],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text', text: `Error getting plugin config schema: ${error}` }],
-          isError: true,
-        };
-      }
-    },
+    handle('getting plugin config schema', async ({ pluginName }) => jsonResult(await client.getPluginConfigSchema(pluginName))),
   );
 
-  server.tool(
+  tool(
     'get_plugin_changelog',
-    'Get the CHANGELOG.md content for an installed Homebridge plugin.',
     {
-      pluginName: z
-        .string()
-        .describe("The npm package name of the plugin (e.g. 'homebridge-hue')"),
+      title: 'Plugin changelog',
+      description: 'Get the CHANGELOG.md content for an installed Homebridge plugin.',
+      inputSchema: { pluginName },
+      annotations: READ,
     },
-    async ({ pluginName }) => {
-      try {
-        const changelog = await client.getPluginChangelog(pluginName);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: typeof changelog === 'string' ? changelog : JSON.stringify(changelog, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text', text: `Error getting plugin changelog: ${error}` }],
-          isError: true,
-        };
-      }
-    },
+    handle('getting plugin changelog', async ({ pluginName }) => {
+      const changelog = await client.getPluginChangelog(pluginName);
+      return typeof changelog === 'string' ? textResult(changelog) : jsonResult(changelog);
+    }),
   );
-}
+};

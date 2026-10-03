@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **`search_logs` can no longer hang the server.** The 5-second budget was only checked between lines, so a backtracking regex such as `^(a+)+$` blocked the whole process on a single line (measured: 23 s for a 27-character line, minutes for 31). Regex matching now runs in a worker thread that is terminated when the budget runs out.
+- **`get_config` redacts secrets.** Passwords, tokens, API keys and the bridge pin are replaced with `__REDACTED__` before the config reaches the model, and `update_config` restores the real values (matching array entries by `platform`/`accessory`/`name`, never by position alone). Use `includeSecrets: true` to see them.
+- **`update_config` validates its input**: the config must contain a `bridge` object, so an empty or truncated object can no longer replace `config.json`.
+- **Read-only mode**: `HOMEBRIDGE_READ_ONLY=true` removes every tool that changes state.
+- Every tool now declares MCP annotations (`readOnlyHint`, `destructiveHint`, ...), so clients can confirm restarts, cache resets and config writes.
+- Startup warns when `HOMEBRIDGE_URL` would send the password over plain `http` to a non-local host.
+- Refreshed the lockfile to clear `npm audit` advisories in transitive dependencies of the MCP SDK (`hono`, `@hono/node-server`, `fast-uri`, `ip-address`). None are reachable from this stdio-only server.
+
+### Added
+
+- `HOMEBRIDGE_TIMEOUT_MS` (default 30 s): every request to Homebridge now times out instead of hanging forever when the host is unreachable.
+- `remove_cached_accessory` accepts a `cacheFile`, so accessories on a child bridge can be removed. `get_cached_accessories` reports each accessory's `cacheFile`.
+- `verbose` option on `list_plugins`, `search_plugins` and `get_cached_accessories` to get the full API objects.
+
+### Changed
+
+- **Tool output is compact JSON** instead of pretty-printed, about 25% fewer tokens for the same data.
+- `list_plugins`, `search_plugins` and `get_cached_accessories` return a summary of the useful fields by default (pass `verbose: true` for everything).
+- `get_accessory` fetches the single accessory (`GET /api/accessories/:uniqueId`) instead of downloading the whole list.
+- `list_accessories` with a `room` filter fetches the accessories and the layout in parallel.
+- The log tools stream the log and keep only the last 16 MB in memory, instead of downloading the whole file first.
+- Error messages no longer repeat `Error:` (`Error listing plugins: fail`, not `Error listing plugins: Error: fail`), and network failures say which host could not be reached and why.
+- Migrated from the deprecated `server.tool()` to `registerTool()`, with a title on every tool.
+
+### Fixed
+
+- The server reported version `1.0.1` to MCP clients regardless of the installed version; it now reads it from `package.json`.
+- Parallel requests (e.g. `get_accessory_layout`) each performed their own login, and parallel 401s each triggered a token refresh. Logins and refreshes are now shared.
+- A missing or invalid environment variable now prints a one-line error instead of a stack trace. `HOMEBRIDGE_URL` is validated up front.
+
 ## [1.1.0] - 2026-09-10
 
 ### Added
