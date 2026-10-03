@@ -28,13 +28,17 @@ describe('HomebridgeClient', () => {
   let fetchMock: ReturnType<typeof mockFetch>;
 
   beforeEach(() => {
-    Object.assign(process.env, ENV);
+    for (const [key, value] of Object.entries(ENV)) {
+      vi.stubEnv(key, value);
+    }
+    vi.stubEnv('HOMEBRIDGE_TIMEOUT_MS', undefined);
     fetchMock = mockFetch();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.resetModules();
   });
 
@@ -55,22 +59,22 @@ describe('HomebridgeClient', () => {
 
   describe('constructor', () => {
     it('throws when HOMEBRIDGE_URL is missing', async () => {
-      delete process.env.HOMEBRIDGE_URL;
+      vi.stubEnv('HOMEBRIDGE_URL', undefined);
       await expect(createClient()).rejects.toThrow('HOMEBRIDGE_URL');
     });
 
     it('throws when HOMEBRIDGE_USERNAME is missing', async () => {
-      delete process.env.HOMEBRIDGE_USERNAME;
+      vi.stubEnv('HOMEBRIDGE_USERNAME', undefined);
       await expect(createClient()).rejects.toThrow('HOMEBRIDGE_USERNAME');
     });
 
     it('throws when HOMEBRIDGE_PASSWORD is missing', async () => {
-      delete process.env.HOMEBRIDGE_PASSWORD;
+      vi.stubEnv('HOMEBRIDGE_PASSWORD', undefined);
       await expect(createClient()).rejects.toThrow('HOMEBRIDGE_PASSWORD');
     });
 
     it('strips trailing slashes from URL', async () => {
-      process.env.HOMEBRIDGE_URL = 'http://localhost:8581///';
+      vi.stubEnv('HOMEBRIDGE_URL', 'http://localhost:8581///');
       const client = await createClient();
       setupAuthAndApi(jsonResponse([]));
       await client.getAccessories();
@@ -279,7 +283,7 @@ describe('HomebridgeClient', () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
       await client.removeCachedAccessory('uuid-123');
       const [url, opts] = fetchMock.mock.calls[1];
-      expect(url).toContain('/cached-accessories/uuid-123');
+      expect(url).toBe('http://localhost:8581/api/server/cached-accessories/uuid-123');
       expect(opts?.method).toBe('DELETE');
     });
 
@@ -297,14 +301,21 @@ describe('HomebridgeClient', () => {
       expect(result).toEqual({ cpu: {} });
     });
 
-    it('getLogFile → GET /api/platform-tools/hb-service/log/download', async () => {
+    it('getAccessory → GET /api/accessories/:id', async () => {
       const client = await clientWithAuth();
-      fetchMock.mockResolvedValueOnce(textResponse('[9/8/2026] Homebridge is running\n'));
-      const result = await client.getLogFile();
+      fetchMock.mockResolvedValueOnce(jsonResponse({ uniqueId: 'a 1' }));
+      const result = await client.getAccessory('a 1');
+      expect(result).toEqual({ uniqueId: 'a 1' });
+      expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8581/api/accessories/a%201');
+    });
+
+    it('removeCachedAccessory passes cacheFile as a query parameter', async () => {
+      const client = await clientWithAuth();
+      fetchMock.mockResolvedValueOnce(jsonResponse({}));
+      await client.removeCachedAccessory('u1', 'cachedAccessories.0E12');
       expect(fetchMock.mock.calls[1][0]).toBe(
-        'http://localhost:8581/api/platform-tools/hb-service/log/download',
+        'http://localhost:8581/api/server/cached-accessories/u1?cacheFile=cachedAccessories.0E12',
       );
-      expect(result).toBe('[9/8/2026] Homebridge is running\n');
     });
 
     it('throws on non-ok API response', async () => {
@@ -320,6 +331,190 @@ describe('HomebridgeClient', () => {
       expect(fetchMock.mock.calls[1][0]).toBe(
         'http://localhost:8581/api/plugins/lookup/%40scope%2Fplugin',
       );
+    });
+  });
+
+  // ── Constructor validation ────────────────────────────────────
+
+  describe('configuration validation', () => {
+    it('rejects a malformed URL', async () => {
+      vi.stubEnv('HOMEBRIDGE_URL', 'not a url');
+      await expect(createClient()).rejects.toThrow('HOMEBRIDGE_URL is not a valid URL');
+    });
+
+    it('rejects a non-http scheme', async () => {
+      vi.stubEnv('HOMEBRIDGE_URL', 'ftp://homebridge.local');
+      await expect(createClient()).rejects.toThrow('must use http or https');
+    });
+
+    it('rejects an invalid timeout', async () => {
+      vi.stubEnv('HOMEBRIDGE_TIMEOUT_MS', 'soon');
+      await expect(createClient()).rejects.toThrow('HOMEBRIDGE_TIMEOUT_MS');
+    });
+
+    it('warns about plain http to a public host only', async () => {
+      vi.stubEnv('HOMEBRIDGE_URL', 'http://homebridge.example.com:8581');
+      expect((await createClient()).transportWarning).toContain('unencrypted');
+
+      for (const url of ['http://localhost:8581', 'http://192.168.1.10:8581', 'http://homebridge.local', 'https://hb.example.com']) {
+        vi.stubEnv('HOMEBRIDGE_URL', url);
+        expect((await createClient()).transportWarning).toBeNull();
+      }
+    });
+  });
+
+  // ── Concurrency ───────────────────────────────────────────────
+
+  describe('concurrent requests', () => {
+    function routeFetch(handlers: Record<string, () => Response>) {
+      fetchMock.mockImplementation(async (input) => {
+        const path = new URL(String(input)).pathname;
+        const handler = handlers[path];
+        return handler ? handler() : jsonResponse([]);
+      });
+    }
+
+    it('logs in once for parallel first requests', async () => {
+      const client = await createClient();
+      routeFetch({ '/api/auth/login': () => jsonResponse({ access_token: 'tok' }) });
+
+      await Promise.all([client.getAccessories(), client.getAccessoryLayout(), client.getPlugins()]);
+
+      const logins = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/auth/login'));
+      expect(logins).toHaveLength(1);
+    });
+
+    it('refreshes once when parallel requests all see a 401', async () => {
+      const client = await createClient();
+      let token = 'old';
+      fetchMock.mockImplementation(async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/api/auth/login') {
+          return jsonResponse({ access_token: token });
+        }
+        if (path === '/api/auth/refresh') {
+          token = 'new';
+          return jsonResponse({ access_token: 'new' });
+        }
+        const auth = (init?.headers as Record<string, string>).Authorization;
+        return auth === `Bearer ${token}` ? jsonResponse([]) : textResponse('Unauthorized', 401);
+      });
+      await client.getAccessories(); // log in with "old"
+      token = 'rotated'; // server-side expiry: "old" is now rejected
+
+      await Promise.all([client.getAccessories(), client.getPlugins(), client.getCachedAccessories()]);
+
+      const refreshes = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/auth/refresh'));
+      expect(refreshes).toHaveLength(1);
+    });
+  });
+
+  // ── Failure modes ─────────────────────────────────────────────
+
+  describe('failure modes', () => {
+    it('reports an unreachable host with the underlying cause', async () => {
+      const client = await createClient();
+      fetchMock.mockRejectedValueOnce(new TypeError('fetch failed', { cause: new Error('connect ECONNREFUSED 127.0.0.1:8581') }));
+
+      await expect(client.getAccessories()).rejects.toThrow(
+        'Cannot reach Homebridge at http://localhost:8581 (POST /api/auth/login): connect ECONNREFUSED',
+      );
+    });
+
+    it('times out a request that never answers', async () => {
+      vi.stubEnv('HOMEBRIDGE_TIMEOUT_MS', '50');
+      const client = await createClient();
+      fetchMock.mockImplementation((_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+        }),
+      );
+
+      await expect(client.getAccessories()).rejects.toThrow('Homebridge did not respond within 50ms (POST /api/auth/login)');
+    });
+
+    it('passes an abort signal on every request', async () => {
+      const client = await createClient();
+      setupAuthAndApi(jsonResponse([]));
+      await client.getAccessories();
+      for (const [, init] of fetchMock.mock.calls) {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+      }
+    });
+
+    it('re-authenticates when the refresh request itself throws', async () => {
+      const client = await createClient();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ access_token: 'tok1' }))
+        .mockResolvedValueOnce(textResponse('Unauthorized', 401))
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(jsonResponse({ access_token: 'tok2' }))
+        .mockResolvedValueOnce(jsonResponse({ up: true }));
+
+      await expect(client.getHomebridgeStatus()).resolves.toEqual({ up: true });
+      expect(fetchMock.mock.calls[3][0]).toBe('http://localhost:8581/api/auth/login');
+    });
+
+    it('gives up after one retry when the retry is also unauthorized', async () => {
+      const client = await createClient();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ access_token: 'tok1' }))
+        .mockResolvedValueOnce(textResponse('Unauthorized', 401))
+        .mockResolvedValueOnce(jsonResponse({ access_token: 'tok2' }))
+        .mockResolvedValueOnce(textResponse('Forbidden by policy', 401));
+
+      await expect(client.getHomebridgeStatus()).rejects.toThrow('Homebridge API error 401 GET /api/status/homebridge: Forbidden by policy');
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    });
+
+    it('returns text for a 2xx response that is not JSON', async () => {
+      const client = await createClient();
+      setupAuthAndApi(textResponse('OK'));
+      await expect(client.restartServer()).resolves.toBe('OK');
+    });
+  });
+
+  // ── Log streaming ─────────────────────────────────────────────
+
+  describe('getLogTail', () => {
+    function streamResponse(chunks: string[]) {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/plain' } });
+    }
+
+    it('reads the log download endpoint', async () => {
+      const client = await createClient();
+      setupAuthAndApi(textResponse('[9/8/2026] Homebridge is running\n'));
+      const result = await client.getLogTail(1024);
+      expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8581/api/platform-tools/hb-service/log/download');
+      expect(result).toEqual({ text: '[9/8/2026] Homebridge is running\n', truncated: false });
+    });
+
+    it('keeps only the last maxBytes of a streamed log', async () => {
+      const client = await createClient();
+      setupAuthAndApi(streamResponse(['aaaaaaaaaa', 'bbbbbbbbbb', 'cccccccccc', 'dd\nlast\n']));
+      const result = await client.getLogTail(12);
+      expect(result).toEqual({ text: 'ccccdd\nlast\n', truncated: true });
+    });
+
+    it('is not truncated when the log is exactly maxBytes', async () => {
+      const client = await createClient();
+      setupAuthAndApi(streamResponse(['12345', '67890']));
+      expect(await client.getLogTail(10)).toEqual({ text: '1234567890', truncated: false });
+    });
+
+    it('surfaces API errors', async () => {
+      const client = await createClient();
+      setupAuthAndApi(textResponse('Log file not found', 404));
+      await expect(client.getLogTail(10)).rejects.toThrow('Homebridge API error 404');
     });
   });
 });

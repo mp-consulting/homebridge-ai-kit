@@ -1,15 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { HomebridgeClient } from '../../src/homebridge-client.js';
 import { register } from '../../src/tools/server.js';
+import { collectHandlers, collectTools, mockClient } from '../helpers.js';
 
-type ToolHandler = (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }>;
-
-function mockClient(overrides: Partial<HomebridgeClient> = {}): HomebridgeClient {
-  return {
-    getAccessories: vi.fn(),
-    getAccessoryLayout: vi.fn(),
-    setAccessoryCharacteristic: vi.fn(),
+function handlersFor(overrides: Parameters<typeof mockClient>[0] = {}) {
+  const client = mockClient({
     getHomebridgeStatus: vi.fn().mockResolvedValue({ status: 'up' }),
     getServerInformation: vi.fn().mockResolvedValue({ version: '1.0.0' }),
     restartServer: vi.fn().mockResolvedValue(null),
@@ -17,58 +11,30 @@ function mockClient(overrides: Partial<HomebridgeClient> = {}): HomebridgeClient
     getCachedAccessories: vi.fn().mockResolvedValue([]),
     removeCachedAccessory: vi.fn().mockResolvedValue(undefined),
     resetCachedAccessories: vi.fn().mockResolvedValue(undefined),
-    getConfig: vi.fn(),
-    updateConfig: vi.fn(),
-    getPlugins: vi.fn(),
-    searchPlugins: vi.fn(),
-    lookupPlugin: vi.fn(),
-    getPluginVersions: vi.fn(),
-    getPluginConfigSchema: vi.fn(),
-    getPluginChangelog: vi.fn(),
-    getSystemInfo: vi.fn(),
     ...overrides,
-  } as unknown as HomebridgeClient;
-}
-
-function extractToolHandlers(client: HomebridgeClient) {
-  const server = new McpServer({ name: 'test', version: '0.0.0' });
-  const handlers = new Map<string, ToolHandler>();
-  const origTool = server.tool.bind(server);
-
-  vi.spyOn(server, 'tool').mockImplementation((...args: unknown[]) => {
-    const handler = args[args.length - 1] as ToolHandler;
-    const name = args[0] as string;
-    handlers.set(name, handler);
-    return origTool(...(args as Parameters<typeof origTool>));
   });
-
-  register(server, client);
-  return handlers;
+  return { client, handlers: collectHandlers(register, client) };
 }
 
 describe('server tools', () => {
   describe('get_homebridge_status', () => {
     it('returns status', async () => {
-      const client = mockClient();
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor();
       const result = await handlers.get('get_homebridge_status')!({});
       expect(JSON.parse(result.content[0].text)).toEqual({ status: 'up' });
     });
 
     it('handles errors', async () => {
-      const client = mockClient({
-        getHomebridgeStatus: vi.fn().mockRejectedValue(new Error('fail')),
-      });
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor({ getHomebridgeStatus: vi.fn().mockRejectedValue(new Error('fail')) });
       const result = await handlers.get('get_homebridge_status')!({});
       expect(result.isError).toBe(true);
+      expect(result.content[0].text).toBe('Error getting Homebridge status: fail');
     });
   });
 
   describe('get_server_status', () => {
     it('returns server information', async () => {
-      const client = mockClient();
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor();
       const result = await handlers.get('get_server_status')!({});
       expect(JSON.parse(result.content[0].text)).toEqual({ version: '1.0.0' });
     });
@@ -76,17 +42,13 @@ describe('server tools', () => {
 
   describe('restart_homebridge', () => {
     it('returns success message when result is falsy', async () => {
-      const client = mockClient();
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor();
       const result = await handlers.get('restart_homebridge')!({});
       expect(result.content[0].text).toContain('restart initiated successfully');
     });
 
     it('returns JSON when result is truthy', async () => {
-      const client = mockClient({
-        restartServer: vi.fn().mockResolvedValue({ status: 'restarting' }),
-      });
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor({ restartServer: vi.fn().mockResolvedValue({ status: 'restarting' }) });
       const result = await handlers.get('restart_homebridge')!({});
       expect(JSON.parse(result.content[0].text)).toEqual({ status: 'restarting' });
     });
@@ -94,38 +56,62 @@ describe('server tools', () => {
 
   describe('get_pairing_info', () => {
     it('returns pairing info', async () => {
-      const client = mockClient();
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor();
       const result = await handlers.get('get_pairing_info')!({});
       expect(JSON.parse(result.content[0].text)).toEqual({ setupCode: '123-45-678' });
     });
   });
 
   describe('get_cached_accessories', () => {
-    it('returns cached accessories', async () => {
-      const client = mockClient({
-        getCachedAccessories: vi.fn().mockResolvedValue([{ uuid: 'u1' }]),
-      });
-      const handlers = extractToolHandlers(client);
+    const cached = {
+      UUID: 'u1',
+      displayName: 'Lamp',
+      plugin: 'homebridge-hue',
+      platform: 'Hue',
+      category: 5,
+      context: { big: 'blob' },
+      services: [{ UUID: 's1', characteristics: [] }],
+      $cacheFile: 'cachedAccessories.0E1234567890',
+    };
+
+    it('returns a compact summary including the cache file', async () => {
+      const { handlers } = handlersFor({ getCachedAccessories: vi.fn().mockResolvedValue([cached]) });
       const result = await handlers.get('get_cached_accessories')!({});
-      expect(JSON.parse(result.content[0].text)).toEqual([{ uuid: 'u1' }]);
+      expect(JSON.parse(result.content[0].text)).toEqual([
+        {
+          UUID: 'u1',
+          displayName: 'Lamp',
+          plugin: 'homebridge-hue',
+          platform: 'Hue',
+          category: 5,
+          cacheFile: 'cachedAccessories.0E1234567890',
+        },
+      ]);
+    });
+
+    it('returns full objects when verbose', async () => {
+      const { handlers } = handlersFor({ getCachedAccessories: vi.fn().mockResolvedValue([cached]) });
+      const result = await handlers.get('get_cached_accessories')!({ verbose: true });
+      expect(JSON.parse(result.content[0].text)).toEqual([cached]);
     });
   });
 
   describe('remove_cached_accessory', () => {
     it('returns success message', async () => {
-      const client = mockClient();
-      const handlers = extractToolHandlers(client);
+      const { client, handlers } = handlersFor();
       const result = await handlers.get('remove_cached_accessory')!({ uuid: 'u1' });
-      expect(result.content[0].text).toContain('u1');
-      expect(result.content[0].text).toContain('removed successfully');
+      expect(result.content[0].text).toBe('Cached accessory u1 removed successfully.');
+      expect(client.removeCachedAccessory).toHaveBeenCalledWith('u1', undefined);
+    });
+
+    it('passes the cache file for child-bridge accessories', async () => {
+      const { client, handlers } = handlersFor();
+      await handlers.get('remove_cached_accessory')!({ uuid: 'u1', cacheFile: 'cachedAccessories.0E1234567890' });
+      expect(client.removeCachedAccessory).toHaveBeenCalledWith('u1', 'cachedAccessories.0E1234567890');
     });
 
     it('handles errors', async () => {
-      const client = mockClient({
-        removeCachedAccessory: vi.fn().mockRejectedValue(new Error('fail')),
-      });
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor({ removeCachedAccessory: vi.fn().mockRejectedValue(new Error('fail')) });
       const result = await handlers.get('remove_cached_accessory')!({ uuid: 'u1' });
       expect(result.isError).toBe(true);
     });
@@ -133,10 +119,21 @@ describe('server tools', () => {
 
   describe('reset_cached_accessories', () => {
     it('returns success message', async () => {
-      const client = mockClient();
-      const handlers = extractToolHandlers(client);
+      const { handlers } = handlersFor();
       const result = await handlers.get('reset_cached_accessories')!({});
       expect(result.content[0].text).toContain('reset');
+    });
+  });
+
+  describe('annotations', () => {
+    it('marks restart and cache removal as destructive and status reads as read-only', () => {
+      const tools = collectTools(register, mockClient());
+      for (const name of ['restart_homebridge', 'remove_cached_accessory', 'reset_cached_accessories']) {
+        expect(tools.get(name)!.config.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+      }
+      for (const name of ['get_homebridge_status', 'get_server_status', 'get_pairing_info', 'get_cached_accessories']) {
+        expect(tools.get(name)!.config.annotations.readOnlyHint).toBe(true);
+      }
     });
   });
 });

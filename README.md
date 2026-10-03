@@ -14,7 +14,7 @@ MCP (Model Context Protocol) server for [Homebridge](https://homebridge.io) — 
 ## Prerequisites
 
 - [Homebridge](https://homebridge.io) with [homebridge-config-ui-x](https://github.com/homebridge/homebridge-config-ui-x) installed (provides the REST API)
-- Node.js 18+
+- Node.js 22.10+, 24 or 26
 
 ## Installation
 
@@ -31,6 +31,21 @@ The server requires three environment variables:
 | `HOMEBRIDGE_URL` | URL of your Homebridge UI | `http://192.168.1.100:8581` |
 | `HOMEBRIDGE_USERNAME` | Homebridge UI login username | `admin` |
 | `HOMEBRIDGE_PASSWORD` | Homebridge UI login password | `admin` |
+
+Optional:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HOMEBRIDGE_READ_ONLY` | Set to `true` to disable every tool that changes something (`set_accessory`, `restart_homebridge`, `update_config`, `remove_cached_accessory`, `reset_cached_accessories`) | `false` |
+| `HOMEBRIDGE_TIMEOUT_MS` | How long to wait for Homebridge before a request fails | `30000` |
+
+## Security
+
+- **Secrets stay out of the model's context.** `get_config` replaces passwords, tokens, API keys and the bridge pin with `__REDACTED__`. When the model writes the config back with `update_config`, those placeholders are swapped for the real values, so editing a plugin's settings never erases its credentials. Pass `includeSecrets: true` to `get_config` only when you actually need to see a credential.
+- **Write tools are annotated.** Every tool declares MCP `readOnlyHint` / `destructiveHint` annotations, so clients can ask for confirmation before a restart, a cache reset or a config write. Use `HOMEBRIDGE_READ_ONLY=true` to remove the write tools entirely.
+- **`update_config` rejects incomplete configs.** The object must contain a `bridge` block, so a truncated or empty object can't replace your whole `config.json`.
+- **Regex log searches are sandboxed.** `search_logs` with `regex: true` runs in a worker thread that is killed after 5 seconds, so a pathological pattern can't hang the server.
+- **Transport.** The server warns on startup if `HOMEBRIDGE_URL` sends your password over plain `http` to a host outside your local network. Prefer `https` in that case.
 
 ## Usage
 
@@ -77,7 +92,7 @@ npx @modelcontextprotocol/inspector homebridge-mcp-server
 | Tool | Description |
 |------|-------------|
 | `list_accessories` | List all accessories with current state. Supports filtering by `room`, `type`, `name`, `manufacturer`, and `excludeManufacturer` |
-| `get_accessory` | Get detailed info for a specific accessory |
+| `get_accessory` | Get detailed info for a specific accessory by `uniqueId` |
 | `set_accessory` | Control an accessory (on/off, brightness, temperature, etc.) |
 | `get_accessory_layout` | Get the room layout from the Homebridge UI |
 
@@ -89,23 +104,23 @@ npx @modelcontextprotocol/inspector homebridge-mcp-server
 | `get_server_status` | Get server version, uptime, Node.js version, OS details, and instance ID |
 | `restart_homebridge` | Restart the Homebridge service |
 | `get_pairing_info` | Get HomeKit pairing code / QR info |
-| `get_cached_accessories` | List cached accessories |
-| `remove_cached_accessory` | Remove a specific cached accessory |
+| `get_cached_accessories` | List cached accessories (UUID, name, plugin, platform, `cacheFile`); `verbose` for full objects |
+| `remove_cached_accessory` | Remove a specific cached accessory; pass `cacheFile` for child-bridge accessories |
 | `reset_cached_accessories` | Reset all cached accessories |
 
 ### Configuration
 
 | Tool | Description |
 |------|-------------|
-| `get_config` | Read the current config.json |
-| `update_config` | Update config.json (full replacement) |
+| `get_config` | Read the current config.json, with secrets redacted (`includeSecrets` to show them) |
+| `update_config` | Update config.json (full replacement; redacted placeholders keep their real values) |
 
 ### Plugins
 
 | Tool | Description |
 |------|-------------|
-| `list_plugins` | List installed plugins |
-| `search_plugins` | Search npm for Homebridge plugins |
+| `list_plugins` | List installed plugins with versions and update status; `verbose` for every field |
+| `search_plugins` | Search npm for Homebridge plugins; `verbose` for every field |
 | `lookup_plugin` | Get details about a specific plugin |
 | `get_plugin_versions` | Get available versions for a plugin |
 | `get_plugin_config_schema` | Get the configuration schema for a plugin |
@@ -151,9 +166,12 @@ npm run build
 ```
 
 ```bash
-npm run dev          # Run with auto-reload (tsx)
-npm test             # Run tests
-npm run test:watch   # Run tests in watch mode
+npm run dev            # Run with auto-reload (tsx)
+npm test               # Run tests
+npm run test:watch     # Run tests in watch mode
+npm run test:coverage  # Run tests with coverage thresholds (as CI does)
+npm run lint           # ESLint
+npm run typecheck      # Type-check src and test
 ```
 
 ## License

@@ -1,30 +1,26 @@
 #!/usr/bin/env node
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { HomebridgeClient } from './homebridge-client.js';
-import { register as registerAccessories } from './tools/accessories.js';
-import { register as registerServer } from './tools/server.js';
-import { register as registerConfig } from './tools/config.js';
-import { register as registerPlugins } from './tools/plugins.js';
-import { register as registerSystem } from './tools/system.js';
-import { register as registerLogs } from './tools/logs.js';
+import { createServer, envFlag } from './create-server.js';
 
-const server = new McpServer({
-  name: 'homebridge-mcp-server',
-  version: '1.0.1',
-});
+// stdout carries the MCP protocol, so every human-facing message goes to stderr.
+let client: HomebridgeClient;
+try {
+  client = new HomebridgeClient();
+} catch (error) {
+  console.error(`homebridge-mcp-server: ${error instanceof Error ? error.message : error}`);
+  process.exit(1);
+}
 
-const client = new HomebridgeClient();
+if (client.transportWarning) {
+  console.error(`homebridge-mcp-server: warning: ${client.transportWarning}`);
+}
 
-// Register all tool groups
-registerAccessories(server, client);
-registerServer(server, client);
-registerConfig(server, client);
-registerPlugins(server, client);
-registerSystem(server, client);
-registerLogs(server, client);
+const readOnly = envFlag(process.env.HOMEBRIDGE_READ_ONLY);
+if (readOnly) {
+  console.error('homebridge-mcp-server: read-only mode, write tools are disabled');
+}
 
-// Start the server with stdio transport
-const transport = new StdioServerTransport();
-await server.connect(transport);
+const server = createServer(client, { readOnly });
+await server.connect(new StdioServerTransport());
