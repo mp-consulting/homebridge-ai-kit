@@ -41,5 +41,17 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Publish
+      # ai-kit depends on ai-core, so ai-core goes first. Skipped when this
+      # ai-core version is already on npm (an ai-kit-only release).
+      # Both packages need npm trusted publishing (OIDC) configured for this workflow.
+      - name: Publish @mp-consulting/homebridge-ai-core
+        run: |
+          VERSION=$(node -p "require('./packages/ai-core/package.json').version")
+          if npm view "@mp-consulting/homebridge-ai-core@$VERSION" version >/dev/null 2>&1; then
+            echo "@mp-consulting/homebridge-ai-core@$VERSION is already published, skipping."
+          else
+            npm publish -w packages/ai-core --provenance --access public
+          fi
+
+      - name: Publish @mp-consulting/homebridge-ai-kit
         run: npm publish --provenance --access public
