@@ -13,7 +13,16 @@ const WRITE_TOOLS = [
   'remove_cached_accessory',
   'reset_cached_accessories',
   'update_config',
+  'patch_config',
+  'install_plugin',
+  'update_plugin',
+  'uninstall_plugin',
+  'restart_child_bridge',
+  'stop_child_bridge',
+  'start_child_bridge',
 ];
+
+const TOOL_COUNT = 31;
 
 /** Connect a real MCP client to the server over an in-memory transport. */
 async function connect(client: HomebridgeClient = mockClient(), options: ServerOptions = {}) {
@@ -33,10 +42,10 @@ describe('createServer', () => {
     expect(mcp.getServerVersion()).toEqual({ name: 'homebridge-ai-kit', version: pkg.version });
   });
 
-  it('registers all 22 tools with titles and annotations', async () => {
+  it('registers all 31 tools with titles and annotations', async () => {
     const { tools } = await (await connect()).listTools();
 
-    expect(tools).toHaveLength(22);
+    expect(tools).toHaveLength(TOOL_COUNT);
     for (const tool of tools) {
       expect(tool.title, tool.name).toBeTruthy();
       expect(tool.annotations?.readOnlyHint, tool.name).toBeTypeOf('boolean');
@@ -49,7 +58,7 @@ describe('createServer', () => {
     const { tools } = await (await connect(mockClient(), { readOnly: true })).listTools();
     const names = tools.map((t) => t.name);
 
-    expect(tools).toHaveLength(22 - WRITE_TOOLS.length);
+    expect(tools).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length);
     for (const name of WRITE_TOOLS) {
       expect(names).not.toContain(name);
     }

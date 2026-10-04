@@ -517,4 +517,81 @@ describe('HomebridgeClient', () => {
       await expect(client.getLogTail(10)).rejects.toThrow('Homebridge API error 404');
     });
   });
+
+  // ── Options and API tokens ──────────────────────────────────────
+
+  describe('options', () => {
+    async function load() {
+      return (await import('../../src/mcp/homebridge-client.js')).HomebridgeClient;
+    }
+
+    it('takes url and credentials from options over env', async () => {
+      const HomebridgeClient = await load();
+      const client = new HomebridgeClient({ url: 'http://other:1/', username: 'u', password: 'p', timeoutMs: 5 });
+      expect(client.url).toBe('http://other:1');
+      fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: 'jwt' })).mockResolvedValueOnce(jsonResponse([]));
+      await client.getAccessories();
+      expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ username: 'u', password: 'p' });
+    });
+
+    it('uses HOMEBRIDGE_TOKEN without username or password, and does not retry a 401', async () => {
+      vi.stubEnv('HOMEBRIDGE_USERNAME', undefined);
+      vi.stubEnv('HOMEBRIDGE_PASSWORD', undefined);
+      vi.stubEnv('HOMEBRIDGE_TOKEN', 'hbg_abc');
+      const client = await createClient();
+      fetchMock.mockResolvedValueOnce(jsonResponse([])).mockResolvedValueOnce(textResponse('nope', 401));
+      await client.getPlugins();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect((fetchMock.mock.calls[0][1]!.headers as Record<string, string>).Authorization).toBe('Bearer hbg_abc');
+      await expect(client.getPlugins()).rejects.toThrow('Homebridge API error 401');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(await client.accessToken()).toBe('hbg_abc');
+    });
+
+    it('asks getToken for every request and once more after a 401', async () => {
+      const HomebridgeClient = await load();
+      const getToken = vi.fn().mockResolvedValueOnce('t1').mockResolvedValueOnce('t2').mockResolvedValueOnce('t3').mockResolvedValue('t4');
+      const client = new HomebridgeClient({ url: 'http://hb', getToken });
+      fetchMock.mockResolvedValueOnce(jsonResponse([])).mockResolvedValueOnce(textResponse('expired', 401)).mockResolvedValueOnce(jsonResponse([]));
+      await client.getPlugins();
+      await client.getPlugins();
+      const auth = fetchMock.mock.calls.map((c) => (c[1]!.headers as Record<string, string>).Authorization);
+      expect(auth).toEqual(['Bearer t1', 'Bearer t2', 'Bearer t3']);
+      expect(await client.accessToken()).toBe('t4');
+    });
+
+    it('logs in for accessToken() with username and password', async () => {
+      const client = await createClient();
+      fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: 'jwt1' }));
+      expect(await client.accessToken()).toBe('jwt1');
+      expect(await client.accessToken()).toBe('jwt1');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('explains missing credentials', async () => {
+      vi.stubEnv('HOMEBRIDGE_USERNAME', undefined);
+      await expect(createClient()).rejects.toThrow('or set HOMEBRIDGE_TOKEN');
+    });
+  });
+
+  describe('plugin jobs and child bridges', () => {
+    it.each([
+      ['installPlugin', ['hb-x', '1.0.0'], 'POST', '/api/plugins/install', { name: 'hb-x', version: '1.0.0' }],
+      ['installPlugin', ['hb-x'], 'POST', '/api/plugins/install', { name: 'hb-x' }],
+      ['updatePlugin', ['hb-x', 'beta'], 'POST', '/api/plugins/update', { name: 'hb-x', version: 'beta' }],
+      ['updatePlugin', ['hb-x'], 'POST', '/api/plugins/update', { name: 'hb-x' }],
+      ['uninstallPlugin', ['hb-x'], 'POST', '/api/plugins/uninstall', { name: 'hb-x' }],
+      ['getPluginJob', ['j/1'], 'GET', '/api/plugins/jobs/j%2F1', undefined],
+      ['getChildBridges', [], 'GET', '/api/status/homebridge/child-bridges', undefined],
+      ['controlChildBridge', ['restart', '0E:3C'], 'PUT', '/api/server/restart/0E%3A3C', undefined],
+    ])('%s → %s %s', async (method, args, verb, path, body) => {
+      const client = await createClient();
+      setupAuthAndApi(jsonResponse({ jobId: 'j1' }));
+      await (client as any)[method](...args);
+      const [url, init] = fetchMock.mock.calls[1];
+      expect(url).toBe(`http://localhost:8581${path}`);
+      expect(init!.method).toBe(verb);
+      expect(init!.body === undefined ? undefined : JSON.parse(init!.body as string)).toEqual(body);
+    });
+  });
 });

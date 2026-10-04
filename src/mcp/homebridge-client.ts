@@ -3,7 +3,7 @@
  * Handles JWT authentication, token refresh, and all API calls.
  */
 
-import type { Accessory, CachedAccessory, Plugin, Room } from './types.js';
+import type { Accessory, CachedAccessory, ChildBridge, Plugin, PluginJob, Room } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -33,32 +33,57 @@ export function insecureTransportWarning(url: URL): string | null {
     /^f[cd][0-9a-f]{2}:/i.test(host);
   return local
     ? null
-    : `HOMEBRIDGE_URL uses plain http to a non-local host (${url.host}); your Homebridge password will be sent unencrypted.`;
+    : `HOMEBRIDGE_URL uses plain http to a non-local host (${url.host}); your Homebridge credentials will be sent unencrypted.`;
 }
+
+export interface HomebridgeClientOptions {
+  /** Homebridge UI URL. Default: `HOMEBRIDGE_URL`. */
+  url?: string;
+  /** Default: `HOMEBRIDGE_USERNAME`. Not needed with a token. */
+  username?: string;
+  /** Default: `HOMEBRIDGE_PASSWORD`. Not needed with a token. */
+  password?: string;
+  /** A Homebridge UI API token (Glass UI `hbg_…`). Default: `HOMEBRIDGE_TOKEN`. Replaces username/password. */
+  token?: string;
+  /** Supplies a (short-lived) token per request, e.g. the current user's JWT. Takes precedence over everything else. */
+  getToken?: () => Promise<string>;
+  /** Per-request timeout. Default: `HOMEBRIDGE_TIMEOUT_MS`, else 30000. */
+  timeoutMs?: number;
+}
+
+type AuthMode = { kind: 'login'; username: string; password: string } | { kind: 'static'; token: string } | { kind: 'provider'; getToken: () => Promise<string> };
 
 export class HomebridgeClient {
   private readonly baseUrl: string;
-  private readonly username: string;
-  private readonly password: string;
+  private readonly auth: AuthMode;
   private readonly timeoutMs: number;
   private token: string | null = null;
   /** In-flight login/refresh, shared so concurrent callers don't each log in. */
   private renewal: Promise<void> | null = null;
 
-  constructor() {
-    const url = process.env.HOMEBRIDGE_URL;
-    const username = process.env.HOMEBRIDGE_USERNAME;
-    const password = process.env.HOMEBRIDGE_PASSWORD;
-    const timeout = process.env.HOMEBRIDGE_TIMEOUT_MS;
+  constructor(options: HomebridgeClientOptions = {}) {
+    const env = process.env;
+    const url = options.url ?? env.HOMEBRIDGE_URL;
+    const timeout = options.timeoutMs ?? env.HOMEBRIDGE_TIMEOUT_MS;
 
     if (!url) {
       throw new Error('HOMEBRIDGE_URL environment variable is required');
     }
-    if (!username) {
-      throw new Error('HOMEBRIDGE_USERNAME environment variable is required');
-    }
-    if (!password) {
-      throw new Error('HOMEBRIDGE_PASSWORD environment variable is required');
+
+    if (options.getToken) {
+      this.auth = { kind: 'provider', getToken: options.getToken };
+    } else if (options.token ?? env.HOMEBRIDGE_TOKEN) {
+      this.auth = { kind: 'static', token: (options.token ?? env.HOMEBRIDGE_TOKEN)! };
+    } else {
+      const username = options.username ?? env.HOMEBRIDGE_USERNAME;
+      const password = options.password ?? env.HOMEBRIDGE_PASSWORD;
+      if (!username) {
+        throw new Error('HOMEBRIDGE_USERNAME environment variable is required (or set HOMEBRIDGE_TOKEN)');
+      }
+      if (!password) {
+        throw new Error('HOMEBRIDGE_PASSWORD environment variable is required (or set HOMEBRIDGE_TOKEN)');
+      }
+      this.auth = { kind: 'login', username, password };
     }
 
     let parsed: URL;
@@ -71,14 +96,17 @@ export class HomebridgeClient {
       throw new Error(`HOMEBRIDGE_URL must use http or https, got ${parsed.protocol}`);
     }
 
-    this.timeoutMs = timeout ? Number(timeout) : DEFAULT_TIMEOUT_MS;
+    this.timeoutMs = timeout !== undefined && timeout !== '' ? Number(timeout) : DEFAULT_TIMEOUT_MS;
     if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) {
       throw new Error(`HOMEBRIDGE_TIMEOUT_MS must be a positive number of milliseconds, got ${timeout}`);
     }
 
     this.baseUrl = url.replace(/\/+$/, '');
-    this.username = username;
-    this.password = password;
+  }
+
+  /** The Homebridge UI base URL, without a trailing slash. */
+  get url(): string {
+    return this.baseUrl;
   }
 
   /** A warning to surface at startup if the configured URL is unsafe, else null. */
@@ -108,9 +136,17 @@ export class HomebridgeClient {
   // ── Authentication ──────────────────────────────────────────────
 
   private async authenticate(): Promise<void> {
+    if (this.auth.kind === 'static') {
+      this.token = this.auth.token;
+      return;
+    }
+    if (this.auth.kind === 'provider') {
+      this.token = await this.auth.getToken();
+      return;
+    }
     const res = await this.send('POST', '/api/auth/login', {
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: this.username, password: this.password }),
+      body: JSON.stringify({ username: this.auth.username, password: this.auth.password }),
     });
 
     if (!res.ok) {
@@ -123,7 +159,8 @@ export class HomebridgeClient {
   }
 
   private async refreshToken(): Promise<boolean> {
-    if (!this.token) {
+    // API tokens cannot be refreshed; a token provider is simply asked again.
+    if (!this.token || this.auth.kind !== 'login') {
       return false;
     }
 
@@ -168,9 +205,23 @@ export class HomebridgeClient {
 
   // ── Generic request methods ─────────────────────────────────────
 
+  /** A token for the current credentials (logging in if needed), e.g. for a socket.io handshake. */
+  async accessToken(): Promise<string> {
+    if (this.auth.kind === 'provider') {
+      return this.auth.getToken();
+    }
+    if (!this.token) {
+      await this.renewToken(null);
+    }
+    return this.token!;
+  }
+
   /** Authenticated request returning the raw response; throws on a non-2xx status. */
   private async fetchAuthed(method: string, path: string, body?: unknown): Promise<Response> {
-    if (!this.token) {
+    if (this.auth.kind === 'provider') {
+      // Ask for a token on every request: the provider owns caching and expiry.
+      this.token = await this.auth.getToken();
+    } else if (!this.token) {
       await this.renewToken(null);
     }
 
@@ -193,7 +244,7 @@ export class HomebridgeClient {
     let res = await doFetch();
 
     // On 401, renew the token (refresh, else re-login) and retry once
-    if (res.status === 401) {
+    if (res.status === 401 && this.auth.kind !== 'static') {
       await res.body?.cancel();
       await this.renewToken(usedToken);
       res = await doFetch();
@@ -312,6 +363,34 @@ export class HomebridgeClient {
 
   async getPluginChangelog(pluginName: string): Promise<unknown> {
     return this.request('GET', `/api/plugins/changelog/${encodeURIComponent(pluginName)}`);
+  }
+
+  /** Starts an install job (Glass UI). */
+  async installPlugin(name: string, version?: string): Promise<{ jobId: string }> {
+    return this.request('POST', '/api/plugins/install', { name, ...(version ? { version } : {}) });
+  }
+
+  async updatePlugin(name: string, version?: string): Promise<{ jobId: string }> {
+    return this.request('POST', '/api/plugins/update', { name, ...(version ? { version } : {}) });
+  }
+
+  async uninstallPlugin(name: string): Promise<{ jobId: string }> {
+    return this.request('POST', '/api/plugins/uninstall', { name });
+  }
+
+  async getPluginJob(jobId: string): Promise<PluginJob> {
+    return this.request<PluginJob>('GET', `/api/plugins/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  // ── Child bridges ───────────────────────────────────────────────
+
+  async getChildBridges(): Promise<ChildBridge[]> {
+    return this.request<ChildBridge[]>('GET', '/api/status/homebridge/child-bridges');
+  }
+
+  /** @param deviceId The child bridge's username (`0E:3C:…` or without colons). */
+  async controlChildBridge(action: 'restart' | 'stop' | 'start', deviceId: string): Promise<unknown> {
+    return this.request('PUT', `/api/server/${action}/${encodeURIComponent(deviceId)}`);
   }
 
   // ── Platform Tools ──────────────────────────────────────────────

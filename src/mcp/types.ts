@@ -15,7 +15,7 @@ export interface Accessory {
   serviceName: string;
   type: string;
   accessoryInformation?: { Manufacturer?: string; Model?: string; Name?: string };
-  serviceCharacteristics?: Array<{ type: string; value: unknown }>;
+  serviceCharacteristics?: CharacteristicInfo[];
   values?: Record<string, unknown>;
 }
 
@@ -36,3 +36,41 @@ export interface CachedAccessory {
 }
 
 export type Plugin = Record<string, unknown> & { name: string };
+
+/** Characteristic metadata as the Homebridge UI reports it. */
+export interface CharacteristicInfo {
+  type: string;
+  value: unknown;
+  format?: string;
+  canWrite?: boolean;
+  minValue?: number;
+  maxValue?: number;
+  minStep?: number;
+  maxLen?: number;
+  validValues?: number[];
+  description?: string;
+  unit?: string;
+}
+
+export interface PluginJob {
+  id: string;
+  action: 'install' | 'update' | 'uninstall';
+  name: string;
+  status: 'running' | 'succeeded' | 'failed';
+  output: string;
+  startedAt: string;
+  finishedAt?: string;
+}
+
+export interface ChildBridge {
+  username: string;
+  name: string;
+  plugin: string;
+  identifier?: string;
+  status: 'pending' | 'ok' | 'down' | string;
+  paired?: boolean | null;
+  pid?: number;
+  port?: number;
+  manuallyStopped?: boolean;
+  [key: string]: unknown;
+}
