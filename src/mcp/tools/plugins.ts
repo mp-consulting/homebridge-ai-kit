@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { RegisterTools } from '../types.js';
-import { READ, READ_REGISTRY, handle, jsonResult, pick, textResult } from './helpers.js';
+import { READ, READ_REGISTRY, handle, jsonResult, pick, structuredResult, textResult } from './helpers.js';
+import { PLUGIN_LIST } from './output-schemas.js';
 
 const INSTALLED_FIELDS = [
   'name',
@@ -34,11 +35,13 @@ export const register: RegisterTools = (tool, client) => {
         'List all currently installed Homebridge plugins with their versions and update status. ' +
         'Pass verbose=true for every field (links, engines, install path, keywords, ...).',
       inputSchema: { verbose },
+      outputSchema: PLUGIN_LIST,
       annotations: READ,
     },
     handle('listing plugins', async ({ verbose }) => {
       const plugins = await client.getPlugins();
-      return jsonResult(verbose ? plugins : plugins.map((p) => pick(p, INSTALLED_FIELDS)));
+      const list = verbose ? plugins : plugins.map((p) => pick(p, INSTALLED_FIELDS));
+      return structuredResult({ plugins: list }, list);
     }),
   );
 

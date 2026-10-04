@@ -61,10 +61,47 @@ describe('config tools', () => {
       expect(client.getConfig).not.toHaveBeenCalled();
     });
 
-    it('returns JSON when result is truthy', async () => {
-      const { handlers } = handlersFor({ updateConfig: vi.fn().mockResolvedValue({ saved: true }) });
+    it('does not echo the saved file (with its secrets) back', async () => {
+      const { handlers } = handlersFor({ updateConfig: vi.fn().mockResolvedValue(realConfig) });
       const result = await handlers.get('update_config')!({ config: { bridge: {} } });
-      expect(JSON.parse(result.content[0].text)).toEqual({ saved: true });
+      expect(result.content[0].text).toContain('Config updated successfully');
+      expect(result.content[0].text).not.toContain('hue-key');
+    });
+
+    it('names the backup the UI made of the previous file', async () => {
+      const { handlers } = handlersFor({
+        listConfigBackups: vi.fn().mockResolvedValue([
+          { id: '1700000000000', timestamp: '2023-11-14T22:13:20.000Z' },
+          { id: '1800000000000', timestamp: '2027-01-15T08:00:00.000Z' },
+        ]),
+      });
+      const result = await handlers.get('update_config')!({ config: { bridge: {} } });
+      expect(result.content[0].text).toContain('backupId "1800000000000"');
+    });
+
+    it('previews a redacted diff on dryRun without writing', async () => {
+      const { client, handlers } = handlersFor();
+      const config = structuredClone(realConfig);
+      config.bridge.name = 'Home';
+      config.platforms[0].apiKey = 'new-secret';
+      const result = await handlers.get('update_config')!({ config, dryRun: true });
+      const preview = JSON.parse(result.content[0].text);
+
+      expect(client.updateConfig).not.toHaveBeenCalled();
+      expect(preview.dryRun).toBe(true);
+      expect(preview.changes).toEqual([{ path: 'bridge.name', op: 'change', before: 'Homebridge', after: 'Home' }]);
+      expect(preview.diff).toContain('-    "name": "Homebridge",');
+      expect(preview.diff).toContain('+    "name": "Home",');
+      expect(result.content[0].text).not.toContain('new-secret');
+      expect(result.content[0].text).not.toContain('hue-key');
+    });
+
+    it('restores placeholders before previewing a dryRun', async () => {
+      const { handlers } = handlersFor();
+      const read = JSON.parse((await handlers.get('get_config')!({})).content[0].text);
+      const preview = JSON.parse((await handlers.get('update_config')!({ config: read, dryRun: true })).content[0].text);
+      expect(preview.changed).toBe(0);
+      expect(preview.note).toContain('No changes');
     });
 
     it('round-trips a redacted config back to the real secrets', async () => {

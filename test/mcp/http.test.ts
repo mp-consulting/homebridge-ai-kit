@@ -46,7 +46,7 @@ describe('runHttpServer', () => {
     const { tools } = await mcp.listTools();
     expect(tools.length).toBeGreaterThan(10);
     expect(tools.every((t) => t.annotations?.readOnlyHint)).toBe(true);
-    expect((await mcp.listPrompts()).prompts).toHaveLength(3);
+    expect((await mcp.listPrompts()).prompts).toHaveLength(6);
     await transport.terminateSession();
     await mcp.close();
   });

@@ -66,4 +66,20 @@ describe('patch_config', () => {
     expect(result.isError).toBe(true);
     expect(client.updateConfig).not.toHaveBeenCalled();
   });
+
+  it('previews a patch on dryRun without writing', async () => {
+    const { client, patch } = setup();
+    const result = await patch({ platform: 'Ring', patch: { name: 'Doorbell', token: 'leak' }, dryRun: true });
+    const preview = JSON.parse(result.content[0].text);
+    expect(client.updateConfig).not.toHaveBeenCalled();
+    expect(preview.changes).toEqual([{ path: 'platforms[2].name', op: 'change', before: 'Ring', after: 'Doorbell' }]);
+    expect(result.content[0].text).not.toContain('leak');
+  });
+
+  it('names the backup made before the write', async () => {
+    const { client, patch } = setup();
+    (client.listConfigBackups as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: '42', timestamp: 'x' }]);
+    const result = await patch({ platform: 'Ring', patch: { name: 'Doorbell' } });
+    expect(JSON.parse(result.content[0].text).note).toContain('backupId "42"');
+  });
 });

@@ -1,11 +1,16 @@
 import type { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 
 export interface ToolConfig<Args extends ZodRawShapeCompat | undefined> {
   title: string;
   description: string;
   inputSchema?: Args;
+  /**
+   * Shape of `structuredContent`; a tool that sets it must return {@link structuredResult}.
+   * Keep it loose (looseObject, optional fields): the server rejects a result that doesn't match.
+   */
+  outputSchema?: AnySchema;
   /** Required so every tool states whether it reads or writes. */
   annotations: ToolAnnotations & { readOnlyHint: boolean };
 }
@@ -43,6 +48,19 @@ export function textResult(text: string): CallToolResult {
 /** Compact JSON: pretty-printing costs ~25% more tokens for the same data. */
 export function jsonResult(data: unknown): CallToolResult {
   return textResult(JSON.stringify(data));
+}
+
+/**
+ * `structuredContent` for clients that read it, plus a text block for those that don't. The text
+ * keeps the tool's historical JSON (`text`, by default the structured object itself).
+ */
+export function structuredResult(structured: Record<string, unknown>, text: unknown = structured): CallToolResult {
+  return { ...textResult(JSON.stringify(text)), structuredContent: structured };
+}
+
+/** An API answer as a structured object: objects pass through, anything else is wrapped as `{ value }`. */
+export function asObject(data: unknown): Record<string, unknown> {
+  return typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : { value: data };
 }
 
 export function errorResult(text: string): CallToolResult {
