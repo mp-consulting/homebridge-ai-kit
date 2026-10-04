@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envList, httpOptionsFromEnv } from '../../src/mcp/stdio.js';
+import { envList, httpOptionsFromEnv, serverOptionsFromEnv } from '../../src/mcp/stdio.js';
 
 describe('httpOptionsFromEnv', () => {
   it('reads the token and transport limits', () => {
@@ -26,5 +26,13 @@ describe('httpOptionsFromEnv', () => {
   it('splits lists on commas and whitespace', () => {
     expect(envList(undefined)).toEqual([]);
     expect(envList('a,,b c')).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('serverOptionsFromEnv', () => {
+  it('reads read-only mode and the secrets opt-in, never both', () => {
+    expect(serverOptionsFromEnv({})).toEqual({ readOnly: false, allowSecrets: false });
+    expect(serverOptionsFromEnv({ HOMEBRIDGE_ALLOW_SECRETS: 'true' })).toEqual({ readOnly: false, allowSecrets: true });
+    expect(serverOptionsFromEnv({ HOMEBRIDGE_READ_ONLY: '1', HOMEBRIDGE_ALLOW_SECRETS: 'yes' })).toEqual({ readOnly: true, allowSecrets: false });
   });
 });

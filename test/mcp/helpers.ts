@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { HomebridgeClient } from '../../src/mcp/homebridge-client.js';
-import type { RegisterTools } from '../../src/mcp/types.js';
+import type { RegisterTools, ToolOptions } from '../../src/mcp/types.js';
 import type { ToolConfig, ToolRegistrar } from '../../src/mcp/tools/helpers.js';
 
 export interface ToolResult {
@@ -61,16 +61,16 @@ export function mockClient(overrides: Partial<Record<(typeof CLIENT_METHODS)[num
  * tool's config and handler by name. Handlers are called directly, so Zod
  * input validation is not applied — test that through `createServer`.
  */
-export function collectTools(register: RegisterTools, client: HomebridgeClient): Map<string, CollectedTool> {
+export function collectTools(register: RegisterTools, client: HomebridgeClient, options?: ToolOptions): Map<string, CollectedTool> {
   const tools = new Map<string, CollectedTool>();
   const registrar = ((name: string, config: ToolConfig<never>, cb: (args: unknown, extra: unknown) => Promise<ToolResult>) => {
     tools.set(name, { config, handler: (args = {}) => cb(args, {}) });
   }) as unknown as ToolRegistrar;
-  register(registrar, client);
+  register(registrar, client, options);
   return tools;
 }
 
 /** Shorthand: the handlers from {@link collectTools}. */
-export function collectHandlers(register: RegisterTools, client: HomebridgeClient): Map<string, ToolHandler> {
-  return new Map([...collectTools(register, client)].map(([name, t]) => [name, t.handler]));
+export function collectHandlers(register: RegisterTools, client: HomebridgeClient, options?: ToolOptions): Map<string, ToolHandler> {
+  return new Map([...collectTools(register, client, options)].map(([name, t]) => [name, t.handler]));
 }

@@ -65,6 +65,19 @@ describe('createServer', () => {
     }
   });
 
+  it('only returns secrets when allowed, and never in read-only mode', async () => {
+    const client = mockClient({ getConfig: vi.fn().mockResolvedValue({ bridge: { pin: '031-45-154' } }) });
+    const call = async (options: ServerOptions) => {
+      const mcp = await connect(client, options);
+      const schema = (await mcp.listTools()).tools.find((t) => t.name === 'get_config')!.inputSchema;
+      const result = await mcp.callTool({ name: 'get_config', arguments: { includeSecrets: true } });
+      return { hasParam: 'includeSecrets' in (schema.properties ?? {}), text: JSON.stringify(result.content) };
+    };
+    expect(await call({})).toMatchObject({ hasParam: false, text: expect.not.stringContaining('031-45-154') });
+    expect(await call({ readOnly: true, allowSecrets: true })).toMatchObject({ hasParam: false, text: expect.not.stringContaining('031-45-154') });
+    expect(await call({ allowSecrets: true })).toMatchObject({ hasParam: true, text: expect.stringContaining('031-45-154') });
+  });
+
   it('rejects an update_config without a bridge block before calling Homebridge', async () => {
     const client = mockClient({ updateConfig: vi.fn() });
     const mcp = await connect(client);

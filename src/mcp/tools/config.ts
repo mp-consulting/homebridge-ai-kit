@@ -38,26 +38,31 @@ function describeBlock(b: Block): string {
   return [b.platform && `platform=${b.platform}`, b.accessory && `accessory=${b.accessory}`, b.name && `name=${b.name}`].filter(Boolean).join(' ');
 }
 
-export const register: RegisterTools = (tool, client) => {
+export const register: RegisterTools = (tool, client, { allowSecrets = false } = {}) => {
+  const redactionNote =
+    `Passwords, tokens, API keys and the bridge pin are replaced by "${REDACTED}"; leave those placeholders as-is when calling update_config ` +
+    'and the real values are kept.';
   tool(
     'get_config',
     {
       title: 'Read config.json',
       description:
         'Read the current Homebridge config.json file content. Returns the full configuration including bridge settings, accessories, and platforms. ' +
-        `Passwords, tokens, API keys and the bridge pin are replaced by "${REDACTED}"; leave those placeholders as-is when calling update_config ` +
-        'and the real values are kept.',
-      inputSchema: {
-        includeSecrets: z
-          .boolean()
-          .optional()
-          .describe('Return real secret values instead of placeholders. Only use when the user explicitly asks to see a credential.'),
-      },
+        redactionNote +
+        (allowSecrets ? '' : ' This server never returns the real secret values.'),
+      inputSchema: allowSecrets
+        ? {
+          includeSecrets: z
+            .boolean()
+            .optional()
+            .describe('Return real secret values instead of placeholders. Only use when the user explicitly asks to see a credential.'),
+        }
+        : {},
       annotations: READ,
     },
-    handle('getting config', async ({ includeSecrets }) => {
+    handle('getting config', async (args: { includeSecrets?: boolean }) => {
       const config = await client.getConfig();
-      return jsonResult(includeSecrets ? config : redactSecrets(config));
+      return jsonResult(allowSecrets && args.includeSecrets === true ? config : redactSecrets(config));
     }),
   );
 
