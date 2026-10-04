@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.0.0] - 2026-10-05
+
+### Breaking
+
+- `set_accessory` refuses lock, garage door and security system targets; use the new destructive `set_security_accessory` tool, which asks for confirmation.
+- `get_config`'s `includeSecrets` is opt-in (`HOMEBRIDGE_ALLOW_SECRETS`, or the `allowSecrets` option for `createServer` / `runHttpServer`) and never available in read-only mode.
+- `RegisterTools` takes a third `options` argument, and write tools declare a token `scope`.
+- The default OpenAI model is `gpt-6.1-sol` (over the Responses API) and the default Gemini model `gemini-3.8-flash`.
 
 ### Added
 
@@ -35,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The settings page uses `@mp-consulting/homebridge-ui-kit` 1.3: `lib/theme-boot.js` applies the theme before first paint and `MpKit.Theme.init()` follows the Homebridge setting (its own theme script is gone), and only the minified kit files are copied (`mp-ui-kit-copy --only`).
+- Depends on `@mp-consulting/homebridge-ai-core` ^2.2.0.
 - **The default OpenAI model is `gpt-6.1-sol`** (was `gpt-5`, whose snapshot OpenAI shuts down on 2026-12-11), in ai-core, the settings page, `config.schema.json` and the README.
 - **The default Gemini model is `gemini-3.8-flash`** (was `gemini-2.5-pro`, which Google now limits to projects that already used it), in ai-core, the settings page and `config.schema.json`.
 - `update_config` no longer echoes the Homebridge UI's answer, which is the saved file with its secrets; it returns a short confirmation instead.
