@@ -128,7 +128,7 @@ describe('OpenAiProvider', () => {
         { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: 'accessory', arguments: ':1}' } }] } }] },
         { choices: [{ delta: { tool_calls: [{ function: { name: 'get', arguments: '' } }] } }] },
         { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
-        { choices: [], usage: { prompt_tokens: 4, completion_tokens: 2 } },
+        { choices: [], usage: { prompt_tokens: 4, completion_tokens: 2, prompt_tokens_details: { cached_tokens: 3 } } },
         '[DONE]',
         { choices: [{ delta: { content: 'ignored' } }] },
       ]),
@@ -141,7 +141,7 @@ describe('OpenAiProvider', () => {
       { type: 'tool_call', id: 'call_1', name: 'get', arguments: {} },
     ]);
     const done = chunks.at(-1) as Extract<ChatChunk, { type: 'done' }>;
-    expect(done).toMatchObject({ usage: { inputTokens: 4, outputTokens: 2 }, stopReason: 'tool_calls' });
+    expect(done).toMatchObject({ usage: { inputTokens: 4, outputTokens: 2, cacheReadTokens: 3 }, stopReason: 'tool_calls' });
     expect(done.result).toMatchObject({ text: 'Hello', model: 'gpt-5-x' });
   });
 

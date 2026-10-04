@@ -71,7 +71,7 @@ export { estimateTokens, inputBudget, trimToContext } from './core/tokens.js';
 export type { TrimOptions } from './core/tokens.js';
 export { JsonGenerationError, extractJson, generateJson, normalizePluginSchema } from './core/json.js';
 export type { GenerateJsonOptions, GenerateJsonResult } from './core/json.js';
-export { MODEL_PRICES, UsageTracker, ZERO_USAGE, addUsage, costOf, priceOf } from './core/usage.js';
+export { MODEL_PRICES, UsageTracker, ZERO_USAGE, addUsage, costOf, priceOf, registerModelPrices } from './core/usage.js';
 export type { ModelPrice, TokenUsage, UsageSummary } from './core/usage.js';
 export { PROMPTS } from './core/prompts.js';
 export type { McpPromptName, PromptTemplate } from './core/prompts.js';

@@ -51,7 +51,7 @@ All providers use plain `fetch` (no SDKs). Each declares what it can do, and fea
 |---|---|---|---|---|---|
 | `anthropic` | `claude-sonnet-5-5` | required | yes | yes | 1M (200K for Haiku) |
 | `openai` | `gpt-5` | required | yes | yes | 128K |
-| `gemini` | `gemini-2.5-pro` | required | yes | yes | 1M |
+| `gemini` | `gemini-3.8-flash` | required | yes | yes | 1M |
 | `openai-compatible` | `llama3.1` | optional | yes | yes | 8K (set `contextTokens`) |
 
 - Claude models: `claude-sonnet-5-5` (default), `claude-haiku-4-5-20251001` (cheapest), `claude-opus-5-5` (most capable).

@@ -83,7 +83,7 @@ describe('readAiConfig', () => {
     const dir = await mkdtemp(join(tmpdir(), 'aikit-'));
     const path = join(dir, 'config.json');
     await writeFile(path, JSON.stringify({ platforms: [{ platform: 'Other' }, { platform: 'HomebridgeAiKit', provider: 'gemini', apiKey: 'k' }] }));
-    expect(await readAiConfig(path)).toMatchObject({ provider: 'gemini', model: 'gemini-2.5-pro', apiKey: 'k' });
+    expect(await readAiConfig(path)).toMatchObject({ provider: 'gemini', model: 'gemini-3.8-flash', apiKey: 'k' });
 
     vi.stubEnv('UIX_STORAGE_PATH', dir);
     expect((await readAiConfig())?.provider).toBe('gemini');

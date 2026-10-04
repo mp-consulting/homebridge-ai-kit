@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Claude prompt caching.** The Anthropic adapter puts a cache breakpoint on the last tool definition and on the system prompt, and turns on top-level automatic caching for the conversation, so each step of an agent loop reads the tools, system prompt and earlier turns from the cache instead of paying for them again. `new AnthropicProvider({ …, promptCaching: false })` turns it off (for proxies that reject `cache_control`).
 - **Claude `effort`.** The `HomebridgeAiKit` block takes `effort` (`low` | `medium` | `high` | `xhigh` | `max`), sent as `output_config.effort`; unset keeps the model's default. `ChatRequest.effort` overrides it per call. New exports: `EFFORT_LEVELS`, `EffortLevel`, `AnthropicProviderOptions`.
 - `TokenUsage` has optional `cacheReadTokens` / `cacheWriteTokens` (parts of `inputTokens`), `ModelPrice` has optional `cacheRead` / `cacheWrite` rates, and `priceOf(model)` looks a price up (also without a date suffix or `models/` prefix).
+- **Prices for OpenAI and Gemini models.** `registerModelPrices({ model: { input, output, cacheRead?, cacheWrite? } })` adds or replaces entries in `MODEL_PRICES`, so `costOf` and `UsageTracker` report a cost instead of `null` for models ai-core ships no price for. Dated snapshots (`-2025-08-07`) and `models/` prefixes resolve to the base entry.
+- OpenAI usage reports `prompt_tokens_details.cached_tokens` and Gemini usage `cachedContentTokenCount` as `cacheReadTokens`.
+
+### Changed
+
+- **The default Gemini model is `gemini-3.8-flash`** (was `gemini-2.5-pro`, which Google now limits to projects that already used it). Configs that name a model are unaffected.
 
 ### Fixed
 

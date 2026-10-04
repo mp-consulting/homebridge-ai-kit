@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MODEL_PRICES, UsageTracker, addUsage, costOf, priceOf } from '../../src/core/usage.js';
+import { MODEL_PRICES, UsageTracker, addUsage, costOf, priceOf, registerModelPrices } from '../../src/core/usage.js';
 
 describe('usage', () => {
   it('prices Claude models, including dated snapshots', () => {
@@ -26,6 +26,22 @@ describe('usage', () => {
     for (const [model, price] of Object.entries(MODEL_PRICES)) {
       expect(price.cacheWrite, model).toBeCloseTo(price.input * 1.25);
       expect(price.cacheRead, model).toBeLessThanOrEqual(price.input * 0.1);
+    }
+  });
+
+  it('takes registered prices for other providers, with cached input', () => {
+    registerModelPrices({ 'test-gpt': { input: 1, output: 8, cacheRead: 0.1 }, 'test-gemini': { input: 0.5, output: 3 } });
+    try {
+      expect(costOf('test-gpt', { inputTokens: 2_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000 })).toBeCloseTo(1 + 0.1 + 8);
+      expect(costOf('test-gpt-2025-08-07', { inputTokens: 1_000_000, outputTokens: 0 })).toBe(1);
+      expect(costOf('models/test-gemini', { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBe(0.5);
+      expect(() => registerModelPrices({ bad: { input: -1, output: 1 } })).toThrow('Invalid price for bad');
+      expect(() => registerModelPrices({ bad: { input: 1, output: 1, cacheRead: -1 } })).toThrow('Invalid price');
+      expect(() => registerModelPrices({ bad: { input: 1, output: 1, cacheWrite: -1 } })).toThrow('Invalid price');
+      expect(() => registerModelPrices({ bad: { input: Number.NaN, output: 1 } })).toThrow('Invalid price');
+    } finally {
+      delete MODEL_PRICES['test-gpt'];
+      delete MODEL_PRICES['test-gemini'];
     }
   });
 
