@@ -1,6 +1,6 @@
 /** Claude via the Anthropic Messages API (`POST /v1/messages`), plain fetch. */
 
-import type { AiConfig } from '../core/config.js';
+import type { AiConfig, EffortLevel } from '../core/config.js';
 import { DEFAULT_BASE_URLS, DEFAULT_MAX_OUTPUT_TOKENS } from '../core/config.js';
 import { parseArguments, parseEvent, partsOf, postJson, readSse } from './http.js';
 import type {
@@ -48,9 +48,19 @@ const STOP_REASONS: Record<string, StopReason> = {
   refusal: 'refusal',
 };
 
-function inputTokens(u: ApiUsage): number {
-  return (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+/** Input tokens in total (Claude reports uncached, cache-written and cache-read input separately), with the cached parts. */
+function toUsage(u: ApiUsage): TokenUsage {
+  const read = u.cache_read_input_tokens ?? 0;
+  const write = u.cache_creation_input_tokens ?? 0;
+  return {
+    inputTokens: (u.input_tokens ?? 0) + write + read,
+    outputTokens: u.output_tokens ?? 0,
+    ...(u.cache_read_input_tokens !== undefined ? { cacheReadTokens: read } : {}),
+    ...(u.cache_creation_input_tokens !== undefined ? { cacheWriteTokens: write } : {}),
+  };
 }
+
+const EPHEMERAL = { type: 'ephemeral' } as const;
 
 /** Claude context window: 200K for Haiku, 1M for the current Opus/Sonnet/Fable generations. */
 export function anthropicContextTokens(model: string): number {
@@ -84,7 +94,7 @@ function toResult(model: string, msg: ApiMessage): ChatResult {
   const toolCalls: ToolCall[] = msg.content
     .filter((b): b is Extract<Block, { type: 'tool_use' }> => b.type === 'tool_use')
     .map((b) => ({ id: b.id, name: b.name, arguments: b.input ?? {} }));
-  const usage: TokenUsage = { inputTokens: inputTokens(msg.usage), outputTokens: msg.usage.output_tokens ?? 0 };
+  const usage = toUsage(msg.usage);
   return {
     text,
     toolCalls,
@@ -99,6 +109,12 @@ function toResult(model: string, msg: ApiMessage): ChatResult {
   };
 }
 
+export interface AnthropicProviderOptions
+  extends Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens' | 'effort'>, ProviderRetryOptions {
+  /** Cache breakpoints on the tools, the system prompt and the conversation (default true). Turn off for proxies that reject `cache_control`. */
+  promptCaching?: boolean;
+}
+
 export class AnthropicProvider implements AiProvider {
   readonly name = 'anthropic' as const;
   readonly model: string;
@@ -107,8 +123,10 @@ export class AnthropicProvider implements AiProvider {
   private readonly apiKey: string;
   private readonly maxOutputTokens: number;
   private readonly retry: RetryOptions;
+  private readonly effort?: EffortLevel;
+  private readonly promptCaching: boolean;
 
-  constructor(config: Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'> & ProviderRetryOptions) {
+  constructor(config: AnthropicProviderOptions) {
     if (!config.apiKey) {
       throw new ProviderError('anthropic', 'an API key is required');
     }
@@ -117,6 +135,8 @@ export class AnthropicProvider implements AiProvider {
     this.url = `${config.baseUrl ?? DEFAULT_BASE_URLS.anthropic}/v1/messages`;
     this.maxOutputTokens = config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
     this.retry = retryOptions(config);
+    this.effort = config.effort;
+    this.promptCaching = config.promptCaching !== false;
     this.capabilities = {
       tools: true,
       streaming: true,
@@ -125,15 +145,29 @@ export class AnthropicProvider implements AiProvider {
     };
   }
 
+  /**
+   * With prompt caching on, the tool list and the system prompt each end in a
+   * cache breakpoint and top-level automatic caching covers the growing
+   * conversation, so each step of an agent loop reads the previous step's
+   * prefix from the cache (3 of the 4 breakpoints a request may use).
+   */
   private body(req: ChatRequest, stream: boolean): Record<string, unknown> {
+    const cache = this.promptCaching;
+    const effort = req.effort ?? this.effort;
+    const tools = req.tools?.map((t, i, all) => ({
+      name: t.name,
+      description: t.description ?? '',
+      input_schema: t.inputSchema,
+      ...(cache && i === all.length - 1 ? { cache_control: EPHEMERAL } : {}),
+    }));
     return {
       model: this.model,
       max_tokens: req.maxOutputTokens ?? this.maxOutputTokens,
-      ...(req.system ? { system: req.system } : {}),
+      ...(req.system ? { system: cache ? [{ type: 'text', text: req.system, cache_control: EPHEMERAL }] : req.system } : {}),
       messages: toApiMessages(req.messages),
-      ...(req.tools?.length
-        ? { tools: req.tools.map((t) => ({ name: t.name, description: t.description ?? '', input_schema: t.inputSchema })) }
-        : {}),
+      ...(tools?.length ? { tools } : {}),
+      ...(cache ? { cache_control: EPHEMERAL } : {}),
+      ...(effort ? { output_config: { effort } } : {}),
       ...(stream ? { stream: true } : {}),
     };
   }

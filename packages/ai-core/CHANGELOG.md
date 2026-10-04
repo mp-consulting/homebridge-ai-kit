@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Provider requests are retried.** Network errors and HTTP 408, 429, 5xx (including Anthropic's 529 "overloaded") are retried with full-jitter exponential backoff (500 ms base, 8 s cap), waiting at least as long as a `retry-after` / `retry-after-ms` header asks; a `retry-after` over 60 s fails at once instead of hanging. An aborted signal stops at once, also mid-backoff. Streaming requests are retried until the response starts. The `HomebridgeAiKit` block takes `maxRetries` (default 2, 0 turns it off); the provider constructors also take `maxRetries` and a `retry` object (`baseDelayMs`, `maxDelayMs`, `maxRetryAfterMs`). New exports: `DEFAULT_RETRY`, `isRetryableStatus`, `parseRetryAfter`, `backoffDelay` and the types `RetryOptions`, `ProviderRetryOptions`.
+- **Claude prompt caching.** The Anthropic adapter puts a cache breakpoint on the last tool definition and on the system prompt, and turns on top-level automatic caching for the conversation, so each step of an agent loop reads the tools, system prompt and earlier turns from the cache instead of paying for them again. `new AnthropicProvider({ …, promptCaching: false })` turns it off (for proxies that reject `cache_control`).
+- **Claude `effort`.** The `HomebridgeAiKit` block takes `effort` (`low` | `medium` | `high` | `xhigh` | `max`), sent as `output_config.effort`; unset keeps the model's default. `ChatRequest.effort` overrides it per call. New exports: `EFFORT_LEVELS`, `EffortLevel`, `AnthropicProviderOptions`.
+- `TokenUsage` has optional `cacheReadTokens` / `cacheWriteTokens` (parts of `inputTokens`), `ModelPrice` has optional `cacheRead` / `cacheWrite` rates, and `priceOf(model)` looks a price up (also without a date suffix or `models/` prefix).
+
+### Fixed
+
+- **Claude costs with prompt caching were wrong.** Cache reads and writes were counted as ordinary input. `costOf` now prices them at Claude's cache rates: writes at 1.25x input (5-minute TTL), reads at 0.1x input, 0.05x on Claude Opus 5.5 and 0.025x on Claude Fable 5.1.
 
 ## [2.1.0] - 2026-10-04
 

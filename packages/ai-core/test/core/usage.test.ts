@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UsageTracker, addUsage, costOf } from '../../src/core/usage.js';
+import { MODEL_PRICES, UsageTracker, addUsage, costOf, priceOf } from '../../src/core/usage.js';
 
 describe('usage', () => {
   it('prices Claude models, including dated snapshots', () => {
@@ -7,10 +7,36 @@ describe('usage', () => {
     expect(costOf('claude-haiku-4-5-20251001', { inputTokens: 1_000_000, outputTokens: 0 })).toBe(1);
     expect(costOf('claude-opus-5-5', { inputTokens: 0, outputTokens: 1_000_000 })).toBe(20);
     expect(costOf('gpt-5', { inputTokens: 1, outputTokens: 1 })).toBeNull();
+    expect(priceOf('models/claude-haiku-4-5')).toBe(MODEL_PRICES['claude-haiku-4-5']);
+  });
+
+  it('prices cache reads and writes at the cache rates', () => {
+    // Sonnet 5.5: $2 input, $0.20 cache read, $2.50 cache write (5-minute TTL), $10 output.
+    const usage = { inputTokens: 3_000_000, outputTokens: 0, cacheReadTokens: 1_000_000, cacheWriteTokens: 1_000_000 };
+    expect(costOf('claude-sonnet-5-5', usage)).toBeCloseTo(2 + 0.2 + 2.5);
+    // Opus 5.5 reads at 0.05x, Fable 5.1 at 0.025x.
+    expect(costOf('claude-opus-5-5', { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBeCloseTo(0.2);
+    expect(costOf('claude-fable-5-1', { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBeCloseTo(0.25);
+    expect(costOf('claude-haiku-4-5', { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 })).toBeCloseTo(1.25);
+    // Inconsistent counts never go negative.
+    expect(costOf('claude-haiku-4-5', { inputTokens: 0, outputTokens: 0, cacheReadTokens: 10 })).toBeCloseTo(0.000001);
+  });
+
+  it('every Claude price has cache rates', () => {
+    for (const [model, price] of Object.entries(MODEL_PRICES)) {
+      expect(price.cacheWrite, model).toBeCloseTo(price.input * 1.25);
+      expect(price.cacheRead, model).toBeLessThanOrEqual(price.input * 0.1);
+    }
   });
 
   it('adds usage', () => {
-    expect(addUsage({ inputTokens: 1, outputTokens: 2 }, { inputTokens: 3, outputTokens: 4 })).toEqual({ inputTokens: 4, outputTokens: 6 });
+    expect(addUsage({ inputTokens: 1, outputTokens: 2 }, { inputTokens: 3, outputTokens: 4 })).toStrictEqual({ inputTokens: 4, outputTokens: 6 });
+    expect(addUsage({ inputTokens: 1, outputTokens: 2, cacheReadTokens: 1 }, { inputTokens: 3, outputTokens: 4, cacheWriteTokens: 2 })).toStrictEqual({
+      inputTokens: 4,
+      outputTokens: 6,
+      cacheReadTokens: 1,
+      cacheWriteTokens: 2,
+    });
   });
 
   it('tracks per model and in total', () => {

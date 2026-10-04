@@ -72,6 +72,21 @@
         "minimum": 64,
         "default": 2048
       },
+      "effort": {
+        "title": "Effort (Claude)",
+        "type": "string",
+        "description": "How much Claude thinks before answering. Higher is more thorough but slower and uses more tokens. Leave empty for the model's default. Not supported by Claude Haiku 4.5.",
+        "oneOf": [
+          { "title": "Low", "enum": ["low"] },
+          { "title": "Medium", "enum": ["medium"] },
+          { "title": "High", "enum": ["high"] },
+          { "title": "Extra high", "enum": ["xhigh"] },
+          { "title": "Max", "enum": ["max"] }
+        ],
+        "condition": {
+          "functionBody": "return model.provider === 'anthropic';"
+        }
+      },
       "maxRetries": {
         "title": "Retries on provider errors",
         "type": "integer",

@@ -61,8 +61,10 @@ describe('AnthropicProvider', () => {
     expect(headers['x-api-key']).toBe('sk-ant-secret');
     expect(headers['anthropic-version']).toBe(ANTHROPIC_VERSION);
     const body = sentBody(fetchMock);
-    expect(body).toMatchObject({ model: 'claude-sonnet-5-5', max_tokens: 50, system: 'sys' });
-    expect(body.tools).toEqual([{ name: 'set_accessory', description: '', input_schema: { type: 'object' } }]);
+    expect(body).toMatchObject({ model: 'claude-sonnet-5-5', max_tokens: 50, cache_control: { type: 'ephemeral' } });
+    expect(body.system).toEqual([{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }]);
+    expect(body.tools).toEqual([{ name: 'set_accessory', description: '', input_schema: { type: 'object' }, cache_control: { type: 'ephemeral' } }]);
+    expect(body.output_config).toBeUndefined();
     expect(body.messages[1].content[0]).toEqual({ type: 'tool_use', id: 'tu_0', name: 'list_accessories', input: {} });
     expect(body.messages[2].content[0]).toEqual({ type: 'tool_result', tool_use_id: 'tu_0', content: 'boom', is_error: true });
     expect(body.messages[3].content[0]).toEqual({ type: 'tool_result', tool_use_id: 'tu_x', content: 'ok' });
@@ -70,7 +72,7 @@ describe('AnthropicProvider', () => {
 
     expect(result.text).toBe('Turning it on.');
     expect(result.toolCalls).toEqual([{ id: 'tu_1', name: 'set_accessory', arguments: { uniqueId: 'a', value: true } }]);
-    expect(result.usage).toEqual({ inputTokens: 15, outputTokens: 7 });
+    expect(result.usage).toEqual({ inputTokens: 15, outputTokens: 7, cacheReadTokens: 5 });
     expect(result.stopReason).toBe('tool_calls');
     expect(result.message.providerContent?.provider).toBe('anthropic');
   });
@@ -93,6 +95,51 @@ describe('AnthropicProvider', () => {
     expect(result.stopReason).toBe('other');
     expect(result.model).toBe('claude-sonnet-5-5');
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
+  it('puts the cache breakpoint on the last tool only, and can turn caching off', async () => {
+    const fetchMock = stubFetch(
+      jsonResponse({ content: [], stop_reason: 'end_turn', usage: {} }),
+      jsonResponse({ content: [], stop_reason: 'end_turn', usage: {} }),
+    );
+    const tools = [
+      { name: 'a', inputSchema: { type: 'object' } },
+      { name: 'b', description: 'B', inputSchema: { type: 'object' } },
+    ];
+    await new AnthropicProvider(config).chat({ system: 's', messages: [], tools });
+    let body = sentBody(fetchMock, 0);
+    expect(body.tools[0].cache_control).toBeUndefined();
+    expect(body.tools[1].cache_control).toEqual({ type: 'ephemeral' });
+
+    await new AnthropicProvider({ ...config, promptCaching: false }).chat({ system: 's', messages: [], tools });
+    body = sentBody(fetchMock, 1);
+    expect(body.system).toBe('s');
+    expect(body.cache_control).toBeUndefined();
+    expect(body.tools.every((t: Record<string, unknown>) => !('cache_control' in t))).toBe(true);
+  });
+
+  it('sends effort as output_config, per provider or per request', async () => {
+    const fetchMock = stubFetch(
+      jsonResponse({ content: [], stop_reason: 'end_turn', usage: {} }),
+      jsonResponse({ content: [], stop_reason: 'end_turn', usage: {} }),
+    );
+    const provider = new AnthropicProvider({ ...config, effort: 'high' });
+    await provider.chat({ messages: [] });
+    await provider.chat({ messages: [], effort: 'low' });
+    expect(sentBody(fetchMock, 0).output_config).toEqual({ effort: 'high' });
+    expect(sentBody(fetchMock, 1).output_config).toEqual({ effort: 'low' });
+  });
+
+  it('reports cache writes and reads as parts of the input', async () => {
+    stubFetch(
+      jsonResponse({
+        content: [{ type: 'text', text: 'ok' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 20, cache_creation_input_tokens: 3000, cache_read_input_tokens: 0, output_tokens: 4 },
+      }),
+    );
+    const { usage } = await new AnthropicProvider(config).chat({ messages: [] });
+    expect(usage).toEqual({ inputTokens: 3020, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 3000 });
   });
 
   it('turns HTTP errors into a ProviderError without the key', async () => {
