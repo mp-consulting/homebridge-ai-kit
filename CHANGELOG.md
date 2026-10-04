@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `HomebridgeClient` accepts a `fetch` option, used for every request instead of the global fetch. Glass UI passes one that trusts its own self-signed certificate, so the Assistant's tools work when the UI runs over HTTPS.
+
 - **New package `@mp-consulting/homebridge-ai-core` (2.0.0, `packages/ai-core`).** The AI building blocks that don't need MCP — providers, redaction, config, prompts, tokens, `generateJson`, usage, the Assistant features and the plugin-UI routes (`registerAiRoutes`, `testAiConnection` from `./plugin`) — now ship on their own with `ajv` as the only runtime dependency. Homebridge plugins should depend on it instead of ai-kit, so they no longer install `@modelcontextprotocol/sdk`, `socket.io-client` and `zod`. Its `PluginUiServer` parameter is typed structurally, so `@homebridge/plugin-ui-utils` is not a dependency. ai-core also exports `addUsage`, `ZERO_USAGE`, `TrimOptions`, `PromptTemplate`, `McpPromptName` and the `DEFAULT_*` config constants, which ai-kit re-exports too.
 - **The Assistant (AI core, `.` export).** Provider adapters over plain `fetch` for Claude (`anthropic`, default `claude-sonnet-5-5`), OpenAI, Gemini and any OpenAI-compatible server (Ollama, LM Studio), each declaring its capabilities (tools, streaming, context size). Uniform `chat()` / `stream()` API with tool calling.
 - **Agent loop** `runAgent()`: connects a provider to the MCP tools through the MCP SDK's in-memory transport. Destructive tools are refused unless a `confirm` callback allows them; providers without tool calling get a prompt-only answer.

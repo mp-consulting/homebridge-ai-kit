@@ -49,6 +49,8 @@ export interface HomebridgeClientOptions {
   getToken?: () => Promise<string>;
   /** Per-request timeout. Default: `HOMEBRIDGE_TIMEOUT_MS`, else 30000. */
   timeoutMs?: number;
+  /** The fetch to call Homebridge with, e.g. one that trusts a self-signed certificate. Default: the global fetch. */
+  fetch?: typeof fetch;
 }
 
 type AuthMode = { kind: 'login'; username: string; password: string } | { kind: 'static'; token: string } | { kind: 'provider'; getToken: () => Promise<string> };
@@ -57,6 +59,7 @@ export class HomebridgeClient {
   private readonly baseUrl: string;
   private readonly auth: AuthMode;
   private readonly timeoutMs: number;
+  private readonly fetchImpl: typeof fetch | undefined;
   private token: string | null = null;
   /** In-flight login/refresh, shared so concurrent callers don't each log in. */
   private renewal: Promise<void> | null = null;
@@ -102,6 +105,7 @@ export class HomebridgeClient {
     }
 
     this.baseUrl = url.replace(/\/+$/, '');
+    this.fetchImpl = options.fetch;
   }
 
   /** The Homebridge UI base URL, without a trailing slash. */
@@ -119,7 +123,8 @@ export class HomebridgeClient {
   /** fetch with a timeout, turning network failures into readable errors. */
   private async send(method: string, path: string, init: RequestInit = {}): Promise<Response> {
     try {
-      return await fetch(`${this.baseUrl}${path}`, {
+      // The global is looked up per call, so it can be replaced after construction
+      return await (this.fetchImpl ?? fetch)(`${this.baseUrl}${path}`, {
         ...init,
         method,
         signal: AbortSignal.timeout(this.timeoutMs),
