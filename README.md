@@ -39,7 +39,9 @@ Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP
 
 **MCP resources** you can subscribe to: `homebridge://accessories`, `homebridge://logs/recent`, `homebridge://status`. Changes arrive over the Homebridge UI's socket.io namespaces, or by polling when the socket can't be used.
 
-**MCP prompts**: `diagnose-logs`, `plan-upgrade`, `audit-config`.
+**MCP resource templates** (listed in `resources/list`, with completion): `homebridge://accessory/{uniqueId}` (one accessory with every characteristic), `homebridge://plugin/{name}` (one installed plugin and its child bridges; URL-encode scoped names), `homebridge://child-bridge/{id}` (one child bridge by username, with its health on Glass UI).
+
+**MCP prompts**: `diagnose-logs`, `plan-upgrade`, `audit-config`, `troubleshoot-device` (`device`, `symptom?`), `nightly-health-check` (`hours?`), `scene-builder` (`description`, `room?`).
 
 **Assistant features** (library): `diagnoseLogs`, `generatePluginConfig`, `explainDeviceError`, `assessPluginUpdate`, `suggestOrganization`, `dailyDigest`, `ask`, and `runAgent` for anything that needs the tools. Every input is redacted before it reaches a provider and trimmed to fit its context window; JSON outputs are checked against a schema with one automatic repair attempt; token usage and Claude costs are tracked.
 

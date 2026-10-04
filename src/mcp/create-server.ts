@@ -17,6 +17,7 @@ import { register as registerChildBridges } from './tools/child-bridges.js';
 import { register as registerScenes } from './tools/scenes.js';
 import { register as registerNotifications } from './tools/notifications.js';
 import { registerResources } from './resources.js';
+import { registerResourceTemplates } from './resource-templates.js';
 import { registerPrompts } from './prompts.js';
 import type { LiveSource } from './live.js';
 import { createLiveSource } from './live.js';
@@ -59,6 +60,7 @@ export function createServer(client: HomebridgeClient, options: ServerOptions = 
     register(tool, client);
   }
   registerResources(server, client, options.live ?? createLiveSource(client));
+  registerResourceTemplates(server, client);
   registerPrompts(server);
   return server;
 }
