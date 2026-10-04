@@ -58,11 +58,23 @@ export async function selectAccessories(
 }
 
 /**
- * Characteristics that open, unlock or disarm something. Bulk and scene tools
- * refuse them so each such change goes through `set_accessory`, one accessory at a time.
+ * Characteristics that lock/unlock, open/close or arm/disarm something. Only
+ * `set_security_accessory` writes them: it is marked destructive, so clients
+ * (and `runAgent`) ask the user first. `set_accessory`, `set_accessories`,
+ * `run_scene` and `save_scene` refuse or skip them.
  */
-const SECURITY_CHARACTERISTICS = new Set(['locktargetstate', 'targetdoorstate', 'securitysystemtargetstate']);
+export const SECURITY_CHARACTERISTICS: ReadonlySet<string> = new Set(
+  ['LockTargetState', 'LockCurrentState', 'LockControlPoint', 'TargetDoorState', 'CurrentDoorState', 'SecuritySystemTargetState', 'SecuritySystemCurrentState'].map((c) =>
+    c.toLowerCase(),
+  ),
+);
 
-export function isSecurityCharacteristic(type: string): boolean {
-  return SECURITY_CHARACTERISTICS.has(type.toLowerCase());
+/** Services whose every writable characteristic counts as security-sensitive. */
+export const SECURITY_SERVICES: ReadonlySet<string> = new Set(['LockMechanism', 'LockManagement', 'GarageDoorOpener', 'SecuritySystem'].map((s) => s.toLowerCase()));
+
+const normalize = (name: string) => name.replace(/[\s_-]/g, '').toLowerCase();
+
+/** True when writing `characteristicType` on `accessory` could unlock, open or disarm something. */
+export function isSecurityWrite(accessory: Pick<Accessory, 'type'> | undefined, characteristicType: string): boolean {
+  return SECURITY_CHARACTERISTICS.has(normalize(characteristicType)) || (accessory?.type !== undefined && SECURITY_SERVICES.has(normalize(accessory.type)));
 }

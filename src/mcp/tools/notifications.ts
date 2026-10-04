@@ -15,6 +15,7 @@ export const register: RegisterTools = (tool, client) => {
         channel: z.enum(['webhook', 'ntfy', 'pushover', 'telegram']).optional().describe('Only this channel'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      scope: 'admin',
     },
     handle('sending test notification', async ({ channel }) =>
       jsonResult(await requireGlassUi('Notifications', () => client.sendTestNotification(channel))),

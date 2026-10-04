@@ -39,8 +39,10 @@ describe('resources', () => {
       { uniqueId: 'b', serviceName: 'S', type: 'Switch', values: {} },
     ]);
     const logs = ((await mcp.readResource({ uri: RESOURCE_URIS.logs })).contents[0] as { text: string }).text;
-    expect(logs.split('\n')).toHaveLength(200);
-    expect(logs.endsWith('line 299')).toBe(true);
+    // Marked as untrusted data: the tag lines around 200 log lines.
+    expect(logs.startsWith('<untrusted-data source="homebridge-log">\n')).toBe(true);
+    expect(logs.split('\n')).toHaveLength(202);
+    expect(logs.endsWith('line 299\n</untrusted-data>')).toBe(true);
     expect(logs).not.toContain('\u001B');
     const status = await mcp.readResource({ uri: RESOURCE_URIS.status });
     expect(JSON.parse((status.contents[0] as { text: string }).text)).toEqual({ status: { status: 'up' } });

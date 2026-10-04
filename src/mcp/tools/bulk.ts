@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Accessory, RegisterTools } from '../types.js';
-import { accessoryFilterShape, isSecurityCharacteristic, selectAccessories } from '../accessory-select.js';
+import { accessoryFilterShape, isSecurityWrite, selectAccessories } from '../accessory-select.js';
 import { checkCharacteristicValue } from './accessories.js';
 import { errorMessage, errorResult, handle, jsonResult } from './helpers.js';
 
@@ -43,6 +43,9 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 
 function plan(accessory: Accessory, characteristicType: string, value: Value): Planned | Skipped {
   const base = { uniqueId: accessory.uniqueId, serviceName: accessory.serviceName };
+  if (isSecurityWrite(accessory, characteristicType)) {
+    return { ...base, reason: 'a lock, garage door or security system: use set_security_accessory, which asks the user' };
+  }
   const info = accessory.serviceCharacteristics?.find((c) => c.type.toLowerCase() === characteristicType.toLowerCase());
   if (!info) {
     return { ...base, reason: `no ${characteristicType} characteristic` };
@@ -63,7 +66,8 @@ export const register: RegisterTools = (tool, client) => {
         'Set one characteristic on many accessories at once, e.g. turn off every light in a room. Pick them by `uniqueIds` or by `filter` ' +
         '(the list_accessories filters: room, type, name, manufacturer, excludeManufacturer). Each value is checked per accessory; accessories ' +
         'without the characteristic or that reject the value are skipped and reported. Use dryRun=true to preview the targets first. ' +
-        'Locks, garage doors and security systems (LockTargetState, TargetDoorState, SecuritySystemTargetState) are refused: change those with set_accessory, one at a time.',
+        'Locks, garage doors and security systems (LockTargetState, TargetDoorState, SecuritySystemTargetState, or any lock / garage door / alarm accessory) ' +
+        'are refused or skipped: change those with set_security_accessory, one at a time, which asks the user to confirm.',
       inputSchema: {
         uniqueIds: z.array(z.string().min(1)).min(1).max(MAX_TARGETS).optional().describe('The accessories to change (from list_accessories)'),
         filter: z.object(accessoryFilterShape).optional().describe('Pick the accessories like list_accessories does'),
@@ -79,14 +83,16 @@ export const register: RegisterTools = (tool, client) => {
           .describe(`Refuse when more accessories than this would change (default ${DEFAULT_MAX_TARGETS}). Raise it only when the user meant that many.`),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      scope: 'control',
     },
     handle('setting accessories', async ({ uniqueIds, filter, characteristicType, value, dryRun, maxTargets }) => {
       if (!uniqueIds === !filter) {
         return errorResult('Pass exactly one of `uniqueIds` or `filter`.');
       }
-      if (isSecurityCharacteristic(characteristicType)) {
+      if (isSecurityWrite(undefined, characteristicType)) {
         return errorResult(
-          `${characteristicType} controls a lock, door or alarm and is not changed in bulk. Use set_accessory for each accessory.`,
+          `${characteristicType} controls a lock, door or alarm and is not changed in bulk. ` +
+            'Use set_security_accessory for each accessory (it asks the user to confirm).',
         );
       }
 

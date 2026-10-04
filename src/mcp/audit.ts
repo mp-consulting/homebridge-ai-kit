@@ -17,6 +17,8 @@ export interface AuditEntry {
   ok: boolean;
   /** The error text when `ok` is false. */
   error?: string;
+  /** The tool did not run because the user declined (or could not answer) the MCP elicitation confirmation. */
+  notConfirmed?: boolean;
   /** MCP session id (HTTP). */
   session?: string;
   /** The MCP client's self-reported name and version. */

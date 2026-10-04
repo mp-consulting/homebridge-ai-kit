@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { HomebridgeClient } from '../homebridge-client.js';
 import { requireGlassUi } from '../homebridge-client.js';
 import type { RegisterTools, Scene } from '../types.js';
-import { isSecurityCharacteristic } from '../accessory-select.js';
+import { isSecurityWrite } from '../accessory-select.js';
 import { READ, errorResult, handle, jsonResult, structuredResult } from './helpers.js';
 import { SCENE_LIST } from './output-schemas.js';
 
@@ -47,24 +47,28 @@ export const register: RegisterTools = (tool, client) => {
       title: 'Run scene',
       description:
         'Run a Homebridge Glass UI scene now: every action is applied and the result per action is returned. ' +
-        'A scene that unlocks, opens or disarms something needs confirm=true, which you may only pass after the user has explicitly agreed.',
+        'Scenes that lock or unlock, open or close, or arm or disarm something are refused: apply those actions with set_security_accessory, ' +
+        'which asks the user to confirm, or let the user run the scene in Homebridge Glass UI.',
       inputSchema: {
         scene: z.string().min(1).describe('The scene id or name from list_scenes'),
-        confirm: z.boolean().optional().describe('Required for a scene that changes a lock, garage door or security system, after the user agreed.'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      scope: 'control',
     },
-    handle('running scene', async ({ scene: ref, confirm }) => {
+    handle('running scene', async ({ scene: ref }) => {
       const scenes = await listScenes(client);
       const scene = findScene(scenes, ref);
       if (!scene) {
         return errorResult(`No scene "${ref}". Scenes: ${scenes.map((s) => s.name).join(', ') || 'none'}.`);
       }
-      const sensitive = scene.actions.filter((a) => isSecurityCharacteristic(a.characteristicType));
-      if (sensitive.length && !confirm) {
+      // A model-supplied "confirm" flag is not the user's consent: security changes only go through the destructive tool.
+      const byId = new Map((await client.getAccessories()).map((a) => [a.uniqueId, a]));
+      const sensitive = scene.actions.filter((a) => isSecurityWrite(byId.get(a.uniqueId), a.characteristicType));
+      if (sensitive.length) {
         return errorResult(
-          `Scene "${scene.name}" changes ${sensitive.map((a) => a.characteristicType).join(', ')} (a lock, door or alarm). ` +
-            'Ask the user to confirm, then call run_scene again with confirm=true.',
+          `Scene "${scene.name}" changes a lock, garage door or alarm (${sensitive.map((a) => `${byId.get(a.uniqueId)?.serviceName ?? a.uniqueId} ${a.characteristicType}`).join(', ')}), ` +
+            'so run_scene does not run it. Apply those actions with set_security_accessory (it asks the user to confirm), ' +
+            'or ask the user to run the scene in Homebridge Glass UI.',
         );
       }
       return jsonResult({ name: scene.name, ...(await client.runScene(scene.id)) });
@@ -86,6 +90,7 @@ export const register: RegisterTools = (tool, client) => {
         dryRun: z.boolean().optional().describe('Only return the actions that would be saved.'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      scope: 'admin',
     },
     handle('saving scene', async ({ name, uniqueIds, characteristics, dryRun }) => {
       const wanted = characteristics && new Set(characteristics.map((c) => c.toLowerCase()));
@@ -103,7 +108,7 @@ export const register: RegisterTools = (tool, client) => {
           return (
             c.canWrite !== false &&
             !NOT_STATE.has(type) &&
-            !isSecurityCharacteristic(type) &&
+            !isSecurityWrite(accessory, type) &&
             (!wanted || wanted.has(type)) &&
             c.format !== 'tlv8' &&
             c.format !== 'data' &&

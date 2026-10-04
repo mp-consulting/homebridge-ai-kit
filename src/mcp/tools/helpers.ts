@@ -77,6 +77,8 @@ export function createRegistrar(server: McpServer, options: RegistrarOptions = {
           args: redactSecrets(args),
           ok: errorText === undefined,
           ...(errorText !== undefined ? { error: redactText(errorText).slice(0, 500) } : {}),
+          // withElicitation (outside this wrapper) answers a declined confirmation with "Not run: …".
+          ...(errorText?.startsWith('Not run:') ? { notConfirmed: true } : {}),
           ...(extra?.sessionId ? { session: extra.sessionId } : {}),
           ...(client ? { client: `${client.name}/${client.version}` } : {}),
           ...(principal ? { principal } : {}),
