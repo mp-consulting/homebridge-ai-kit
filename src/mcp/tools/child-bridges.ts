@@ -3,7 +3,8 @@ import type { RegisterTools } from '../types.js';
 import { requireGlassUi } from '../homebridge-client.js';
 import { READ, handle, jsonResult, pick, textResult } from './helpers.js';
 
-const FIELDS = ['username', 'name', 'plugin', 'identifier', 'status', 'paired', 'pid', 'port', 'manuallyStopped'] as const;
+/** What is shown of a child bridge: never its HomeKit/Matter pairing codes. */
+export const CHILD_BRIDGE_FIELDS = ['username', 'name', 'plugin', 'identifier', 'status', 'paired', 'pid', 'port', 'manuallyStopped'] as const;
 
 const deviceId = z
   .string()
@@ -18,7 +19,7 @@ export const register: RegisterTools = (tool, client) => {
       description: 'List the child bridges (plugins running in their own process) with their status (ok, pending, down) and whether they were stopped manually.',
       annotations: READ,
     },
-    handle('listing child bridges', async () => jsonResult((await client.getChildBridges()).map((b) => pick(b, FIELDS)))),
+    handle('listing child bridges', async () => jsonResult((await client.getChildBridges()).map((b) => pick(b, CHILD_BRIDGE_FIELDS)))),
   );
 
   tool(
