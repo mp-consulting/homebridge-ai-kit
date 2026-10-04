@@ -143,3 +143,28 @@ export function redactText(text: string): string {
   }
   return out;
 }
+
+/** HomeKit / Matter pairing fields: whoever holds them can add an unpaired bridge to their own Home. */
+export const PAIRING_KEYS = ['pin', 'setupUri', 'setupCode', 'setupId', 'matterPin', 'matterSetupUri', 'qrCode', 'manualPairingCode'] as const;
+
+/**
+ * A copy of a Homebridge status / bridge object (or an array of them) without
+ * its pairing codes: {@link PAIRING_KEYS}, also inside a nested `matter`
+ * object. Other fields are kept, and the input is left intact.
+ */
+export function redactPairing<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item: unknown) => redactPairing(item)) as T;
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+  const out: Record<string, unknown> = { ...value };
+  for (const key of PAIRING_KEYS) {
+    delete out[key];
+  }
+  if (isPlainObject(out.matter)) {
+    out.matter = redactPairing(out.matter);
+  }
+  return out as T;
+}

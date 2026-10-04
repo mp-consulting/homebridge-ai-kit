@@ -260,11 +260,12 @@ const result = await runAgent({
 | `UsageTracker`, `costOf` | Token and cost accounting (Claude prices; unknown models cost `null`) |
 | `PROMPTS` | Prompt templates, shared with the MCP prompts |
 | `readAiConfig`, `resolveAiConfig` | Read and default the `HomebridgeAiKit` block |
-| `redactSecrets`, `restoreSecrets`, `redactText` | Keep credentials out of model context |
+| `redactSecrets`, `restoreSecrets`, `redactText`, `redactPairing` | Keep credentials and pairing codes out of model context |
+| `SlidingWindowRateLimiter`, `TtlCache`, `withConfirmTimeout`, `ConfirmationBroker`, `readLogTail`, `stripAnsi` | Server helpers: per-user rate limit, expiring cache, confirmations with a timeout, log tails |
 
 Everything in this table except `runAgent` comes from `@mp-consulting/homebridge-ai-core` and is re-exported here unchanged.
 
-`./mcp` exports `createServer`, `HomebridgeClient`, `runStdioServer`, `runHttpServer`, `createLiveSource`; `./plugin` exports `registerAiRoutes` and `testAiConnection` (from ai-core's `./plugin`), `mcpClientSnippets` and `AiKitPlatform`.
+`./mcp` exports `createServer`, `HomebridgeClient`, `runStdioServer`, `runHttpServer`, `createLiveSource`, and the TLS pinning helpers `createTrustedFetch`, `normalizeFingerprint`, `pemFingerprints`; `./plugin` exports `registerAiRoutes` and `testAiConnection` (from ai-core's `./plugin`), `mcpClientSnippets` and `AiKitPlatform`.
 
 ## Security
 

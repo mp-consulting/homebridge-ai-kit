@@ -52,12 +52,17 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 | `DEFAULT_RETRY`, `isRetryableStatus`, `parseRetryAfter`, `backoffDelay`, `RetryOptions` | The retry policy, for callers with their own HTTP |
 | `diagnoseLogs`, `generatePluginConfig`, `explainDeviceError`, `assessPluginUpdate`, `suggestOrganization`, `dailyDigest`, `ask` | Ready-made features; all accept `onChunk`, `signal`, `systemContext` |
 | `readAiConfig`, `resolveAiConfig`, `findAiBlock`, `defaultConfigPath`, `PLATFORM_NAME`, `PLUGIN_NAME`, `PROVIDER_NAMES`, `DEFAULT_MODELS` (+ other `DEFAULT_*` constants) | Read and default the `HomebridgeAiKit` block |
-| `redactSecrets`, `restoreSecrets`, `redactText`, `containsRedacted`, `isSecretKey`, `REDACTED`, `SecretRestoreError` | Keep credentials out of model context |
+| `redactSecrets`, `restoreSecrets`, `redactText`, `redactPairing`, `containsRedacted`, `isSecretKey`, `REDACTED`, `SecretRestoreError` | Keep credentials out of model context |
 | `generateJson`, `extractJson`, `normalizePluginSchema`, `JsonGenerationError` | Schema-checked JSON (ajv) with one repair retry |
 | `trimToContext`, `estimateTokens`, `inputBudget` | Keep inputs inside the context window |
 | `UsageTracker`, `costOf`, `priceOf`, `registerModelPrices`, `addUsage`, `ZERO_USAGE`, `MODEL_PRICES` | Token and cost accounting; Claude prompt-cache reads and writes are priced at the cache rates; register OpenAI / Gemini prices with `registerModelPrices` (cached input reported as `cacheReadTokens`) |
 | `UsageTracker` persistence and budgets: `toJSON()` / `UsageTracker.fromJSON()`, `UsageTracker.load(store)`, `JsonFileUsageStore`, `today()` / `thisMonth()` / `byDay()` / `byMonth()`, `budget` (`dailyTokens`, `monthlyTokens`, `dailyUsd`, `monthlyUsd`), `checkBudget()`, `BudgetExceededError`, `trackUsage(provider, tracker)` | Usage that survives restarts, with per-day / per-month totals and limits that make requests fail fast |
 | `PROMPTS` | Prompt templates (also used by ai-kit's MCP prompts) |
+| `SlidingWindowRateLimiter({ limit, windowMs })` | Per-key (per-user) rate limit: `consume(key)` → `{ allowed, remaining, retryAfterMs }`; idle keys are evicted |
+| `TtlCache({ ttlMs, maxEntries? })` | Expiring cache (`get`, `set`, `getOrSet`, LRU cap) |
+| `withConfirmTimeout(confirm, { timeoutMs, signal?, onTimeout? })`, `ConfirmationBroker` | Confirmation prompts (e.g. `runAgent`'s `confirm`) where no answer in time, an abort or a cancel is a no |
+| `redactPairing(value)`, `PAIRING_KEYS` | Copy of a status / bridge object without HomeKit and Matter pairing codes |
+| `readLogTail(path, maxBytes, maxLines)`, `tailLines`, `stripAnsi`, `ANSI_PATTERN` | The end of a log file or log text, without terminal escape codes |
 
 **`@mp-consulting/homebridge-ai-core/plugin`**: `registerAiRoutes`, `testAiConnection`, `PLATFORM_NAME`, `PLUGIN_NAME`, and the types `AiRoutesOptions`, `ConnectionTest`, `PluginUiServer`.
 

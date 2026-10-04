@@ -1,5 +1,15 @@
 // ── Redaction ──
-export { REDACTED, SecretRestoreError, containsRedacted, isSecretKey, redactSecrets, redactText, restoreSecrets } from './core/redaction.js';
+export {
+  PAIRING_KEYS,
+  REDACTED,
+  SecretRestoreError,
+  containsRedacted,
+  isSecretKey,
+  redactPairing,
+  redactSecrets,
+  redactText,
+  restoreSecrets,
+} from './core/redaction.js';
 
 // ── Config ──
 export {
@@ -88,3 +98,13 @@ export type { ModelPrice, TokenUsage, UsageBudget, UsageCounts, UsageSnapshot, U
 export { JsonFileUsageStore } from './core/usage-store.js';
 export { PROMPTS } from './core/prompts.js';
 export type { McpPromptName, PromptTemplate } from './core/prompts.js';
+
+// ── Server helpers ──
+export { SlidingWindowRateLimiter } from './core/rate-limit.js';
+export type { RateLimitResult, RateLimiterOptions } from './core/rate-limit.js';
+export { TtlCache } from './core/ttl-cache.js';
+export type { TtlCacheOptions } from './core/ttl-cache.js';
+export { ConfirmationBroker, withConfirmTimeout } from './core/confirm.js';
+export type { ConfirmTimeoutOptions, ConfirmationRequest } from './core/confirm.js';
+export { ANSI_PATTERN, readLogTail, stripAnsi, tailLines } from './core/logs.js';
+export type { TailOptions } from './core/logs.js';
