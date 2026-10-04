@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The `@mp-consulting/homebridge-ui-kit` dev dependency now comes from npm (`^1.2.0`) instead of a sibling checkout, so CI and the publish workflow can build the settings page assets.
+
 ## [2.0.0] - Unreleased
 
 ### Added
@@ -34,7 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redaction no longer hides token *counts* such as `maxOutputTokens` or `contextTokens`.
 - **The repository is an npm workspace.** ai-kit depends on `@mp-consulting/homebridge-ai-core` `^2.0.0` and re-exports all of it from `.` and `./plugin` under the same names, so imports from ai-kit (Homebridge Glass UI) keep working. `ajv` is no longer a direct dependency of ai-kit. Root `build`, `typecheck`, `lint`, `test` and `test:coverage` cover both packages, building ai-core first.
 - **Releases publish two packages.** The publish workflow publishes ai-core first (skipped when that version is already on npm), then ai-kit. Before the first release, configure npm trusted publishing (OIDC) for the new `@mp-consulting/homebridge-ai-core` package name, and make sure ai-core is published before ai-kit.
-- **Before release:** `@mp-consulting/homebridge-ui-kit` is referenced as `file:../homebridge-ui-kit` (dev dependency, assets copied at build) until ui-kit 1.2.0 is published; change it to `^1.2.0` before releasing.
 
 ## [1.2.2] - 2026-10-03
 

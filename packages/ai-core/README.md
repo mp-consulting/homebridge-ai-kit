@@ -14,14 +14,6 @@ npm install @mp-consulting/homebridge-ai-core
 
 Requires Node.js `^22.10.0 || ^24.0.0 || ^26.0.0`. ESM only.
 
-For local development before it is published, a plugin checked out next to this repository can use:
-
-```json
-"@mp-consulting/homebridge-ai-core": "file:../homebridge-mcp-server/packages/ai-core"
-```
-
-Run `npm run build` in `homebridge-mcp-server` first, and switch to `^2.0.0` before releasing the plugin.
-
 ## Assistant routes for a plugin's settings UI
 
 ```js
