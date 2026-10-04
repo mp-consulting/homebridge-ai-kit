@@ -5,6 +5,7 @@ import type { RegisterTools } from './types.js';
 import { createRegistrar } from './tools/helpers.js';
 import { register as registerAccessories } from './tools/accessories.js';
 import { register as registerHistory } from './tools/history.js';
+import { register as registerBulk } from './tools/bulk.js';
 import { register as registerServer } from './tools/server.js';
 import { register as registerConfig } from './tools/config.js';
 import { register as registerConfigBackups } from './tools/config-backups.js';
@@ -26,6 +27,7 @@ export const VERSION = version;
 const TOOL_GROUPS: RegisterTools[] = [
   registerAccessories,
   registerHistory,
+  registerBulk,
   registerServer,
   registerConfig,
   registerConfigBackups,
