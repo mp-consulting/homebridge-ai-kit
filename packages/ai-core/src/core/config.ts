@@ -13,6 +13,10 @@ export const PLUGIN_NAME = '@mp-consulting/homebridge-ai-kit';
 export const PROVIDER_NAMES = ['anthropic', 'openai', 'gemini', 'openai-compatible'] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
+/** Claude `output_config.effort` levels: how much the model thinks and spends per answer. */
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: 'claude-sonnet-5-5',
   openai: 'gpt-5',
@@ -60,6 +64,8 @@ export interface AiConfig {
   maxOutputTokens: number;
   /** Overrides the provider's context window, e.g. for a local model. */
   contextTokens?: number;
+  /** Claude only: `output_config.effort`. Unset leaves the model's default (`high`; `medium` on Claude Opus 5.5). Not supported by Claude Haiku 4.5. */
+  effort?: EffortLevel;
   /** Retries of a failed provider request (network error, 408, 429, 5xx); default 2, 0 disables. */
   maxRetries?: number;
   mcp: { http: McpHttpConfig };
@@ -120,7 +126,12 @@ export function resolveAiConfig(block: unknown = {}): AiConfig {
       },
     },
   };
+  const effort = str(b.effort);
+  if (effort !== undefined && !(EFFORT_LEVELS as readonly string[]).includes(effort)) {
+    throw new Error(`Unknown effort "${effort}". Use one of: ${EFFORT_LEVELS.join(', ')}`);
+  }
   const optional: Array<[keyof AiConfig, string | number | undefined]> = [
+    ['effort', effort],
     ['apiKey', str(b.apiKey)],
     ['baseUrl', str(b.baseUrl)?.replace(/\/+$/, '')],
     ['contextTokens', positiveInt(b.contextTokens, 'contextTokens')],

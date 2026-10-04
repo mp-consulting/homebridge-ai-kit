@@ -9,6 +9,7 @@ export {
   DEFAULT_MCP_HTTP_HOST,
   DEFAULT_MCP_HTTP_PORT,
   DEFAULT_MODELS,
+  EFFORT_LEVELS,
   PLATFORM_NAME,
   PLUGIN_NAME,
   PROVIDER_NAMES,
@@ -17,7 +18,7 @@ export {
   readAiConfig,
   resolveAiConfig,
 } from './core/config.js';
-export type { AiConfig, McpHttpConfig, ProviderName } from './core/config.js';
+export type { AiConfig, EffortLevel, McpHttpConfig, ProviderName } from './core/config.js';
 
 // ── Providers ──
 export {
@@ -34,6 +35,7 @@ export {
 } from './providers/index.js';
 export type {
   AiProvider,
+  AnthropicProviderOptions,
   ChatChunk,
   ChatMessage,
   ChatRequest,
@@ -69,7 +71,7 @@ export { estimateTokens, inputBudget, trimToContext } from './core/tokens.js';
 export type { TrimOptions } from './core/tokens.js';
 export { JsonGenerationError, extractJson, generateJson, normalizePluginSchema } from './core/json.js';
 export type { GenerateJsonOptions, GenerateJsonResult } from './core/json.js';
-export { MODEL_PRICES, UsageTracker, ZERO_USAGE, addUsage, costOf } from './core/usage.js';
-export type { TokenUsage, UsageSummary } from './core/usage.js';
+export { MODEL_PRICES, UsageTracker, ZERO_USAGE, addUsage, costOf, priceOf } from './core/usage.js';
+export type { ModelPrice, TokenUsage, UsageSummary } from './core/usage.js';
 export { PROMPTS } from './core/prompts.js';
 export type { McpPromptName, PromptTemplate } from './core/prompts.js';

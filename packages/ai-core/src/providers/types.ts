@@ -1,4 +1,4 @@
-import type { ProviderName } from '../core/config.js';
+import type { EffortLevel, ProviderName } from '../core/config.js';
 import type { TokenUsage } from '../core/usage.js';
 import type { RetryOptions } from './http.js';
 
@@ -38,6 +38,8 @@ export interface ChatRequest {
   messages: ChatMessage[];
   tools?: ToolDefinition[];
   maxOutputTokens?: number;
+  /** Claude only: overrides the provider's `effort` for this request. */
+  effort?: EffortLevel;
   signal?: AbortSignal;
 }
 

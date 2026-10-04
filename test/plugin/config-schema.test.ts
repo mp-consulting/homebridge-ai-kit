@@ -19,6 +19,7 @@ const FULL_BLOCK = {
   contextTokens: 8192,
   maxOutputTokens: 2048,
   maxRetries: 2,
+  effort: 'medium',
   mcp: {
     http: {
       enabled: true,

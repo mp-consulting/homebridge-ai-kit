@@ -79,6 +79,7 @@ Then open its settings in the Homebridge UI. The settings page edits the `Homebr
   "baseUrl": "http://127.0.0.1:11434/v1", // openai-compatible only (or a proxy)
   "contextTokens": 32768,             // optional override, mainly for local models
   "maxOutputTokens": 2048,
+  "effort": "medium",                 // Claude only: low | medium | high | xhigh | max (unset = model default)
   "maxRetries": 2,                    // retries on 408/429/5xx/529 and network errors (backoff, honours retry-after); 0 = off
   "mcp": {
     "http": {

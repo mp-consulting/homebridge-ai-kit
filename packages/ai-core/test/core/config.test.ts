@@ -61,6 +61,9 @@ describe('resolveAiConfig', () => {
   it('rejects unknown providers and bad numbers', () => {
     expect(() => resolveAiConfig({ provider: 'apple' })).toThrow('Unknown AI provider "apple"');
     expect(() => resolveAiConfig({ maxOutputTokens: -1 })).toThrow('maxOutputTokens must be a positive integer');
+    expect(() => resolveAiConfig({ effort: 'extreme' })).toThrow('Unknown effort "extreme"');
+    expect(resolveAiConfig({ effort: ' xhigh ' }).effort).toBe('xhigh');
+    expect(resolveAiConfig({ effort: '' }).effort).toBeUndefined();
     expect(() => resolveAiConfig({ maxRetries: -1 })).toThrow('maxRetries must be a non-negative integer');
     expect(() => resolveAiConfig({ maxRetries: 1.5 })).toThrow('maxRetries');
     expect(resolveAiConfig({ maxRetries: null }).maxRetries).toBeUndefined();

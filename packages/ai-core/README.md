@@ -48,14 +48,14 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 
 | Export | Purpose |
 |---|---|
-| `createProvider(config)` → `AiProvider`, `complete()`, `AnthropicProvider`, `OpenAiProvider`, `GeminiProvider`, `ProviderError` | Claude, OpenAI, Gemini and OpenAI-compatible servers (Ollama, LM Studio) over plain `fetch`, with `chat()` / `stream()` and tool calling. Requests are retried on network errors and 408 / 429 / 5xx / 529 with jittered exponential backoff, honouring `retry-after` (config `maxRetries`, default 2; `retry` option for the timings) |
+| `createProvider(config)` → `AiProvider`, `complete()`, `AnthropicProvider`, `OpenAiProvider`, `GeminiProvider`, `ProviderError` | Claude, OpenAI, Gemini and OpenAI-compatible servers (Ollama, LM Studio) over plain `fetch`, with `chat()` / `stream()` and tool calling. Requests are retried on network errors and 408 / 429 / 5xx / 529 with jittered exponential backoff, honouring `retry-after` (config `maxRetries`, default 2; `retry` option for the timings). Claude requests use prompt caching (tools, system prompt, conversation) and the config's `effort` |
 | `DEFAULT_RETRY`, `isRetryableStatus`, `parseRetryAfter`, `backoffDelay`, `RetryOptions` | The retry policy, for callers with their own HTTP |
 | `diagnoseLogs`, `generatePluginConfig`, `explainDeviceError`, `assessPluginUpdate`, `suggestOrganization`, `dailyDigest`, `ask` | Ready-made features; all accept `onChunk`, `signal`, `systemContext` |
 | `readAiConfig`, `resolveAiConfig`, `findAiBlock`, `defaultConfigPath`, `PLATFORM_NAME`, `PLUGIN_NAME`, `PROVIDER_NAMES`, `DEFAULT_MODELS` (+ other `DEFAULT_*` constants) | Read and default the `HomebridgeAiKit` block |
 | `redactSecrets`, `restoreSecrets`, `redactText`, `containsRedacted`, `isSecretKey`, `REDACTED`, `SecretRestoreError` | Keep credentials out of model context |
 | `generateJson`, `extractJson`, `normalizePluginSchema`, `JsonGenerationError` | Schema-checked JSON (ajv) with one repair retry |
 | `trimToContext`, `estimateTokens`, `inputBudget` | Keep inputs inside the context window |
-| `UsageTracker`, `costOf`, `addUsage`, `ZERO_USAGE`, `MODEL_PRICES` | Token and cost accounting |
+| `UsageTracker`, `costOf`, `priceOf`, `addUsage`, `ZERO_USAGE`, `MODEL_PRICES` | Token and cost accounting; Claude prompt-cache reads and writes are priced at the cache rates |
 | `PROMPTS` | Prompt templates (also used by ai-kit's MCP prompts) |
 
 **`@mp-consulting/homebridge-ai-core/plugin`**: `registerAiRoutes`, `testAiConnection`, `PLATFORM_NAME`, `PLUGIN_NAME`, and the types `AiRoutesOptions`, `ConnectionTest`, `PluginUiServer`.
