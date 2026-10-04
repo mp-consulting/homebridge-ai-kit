@@ -15,7 +15,7 @@ The AI building blocks that don't need MCP also ship on their own as [`@mp-consu
 - [Packages](#packages)
 - [Features](#features)
 - [Providers](#providers)
-- [Homebridge plugin](#homebridge-plugin)
+- [Homebridge plugin](#homebridge-plugin) · [MCP tokens](#mcp-tokens)
 - [MCP server](#mcp-server)
 - [Library API](#library-api)
 - [Security](#security)
@@ -93,6 +93,23 @@ Then open its settings in the Homebridge UI. The settings page edits the `Homebr
 ```
 
 With `mcp.http.enabled`, the plugin serves MCP at `http://<host>:<port>/mcp` while Homebridge runs. It needs a client token (`mcp.http.token` or `HOMEBRIDGE_AI_MCP_TOKEN`) and Homebridge credentials: a Glass UI API token in `homebridgeToken`, or the `HOMEBRIDGE_*` environment variables. A read-only API token gives clients read-only access.
+
+### MCP tokens
+
+The MCP server uses two different tokens:
+
+| Token | What it is for | Stored in |
+|---|---|---|
+| **Client token** | What Claude, Cursor or another MCP client must send (`Authorization: Bearer …`) to reach the HTTP MCP server | `mcp.http.token` (or `HOMEBRIDGE_AI_MCP_TOKEN` for the CLI) |
+| **Homebridge API token** | What the MCP server sends to the Homebridge UI to run its tools. Its scope decides what clients can do: `read` gives read-only tools, `admin` gives all of them | `mcp.http.homebridgeToken` (or `HOMEBRIDGE_TOKEN` for the CLI) |
+
+Where to set or generate them:
+
+- **Homebridge Glass UI 2.0.0-beta.6 or later:** *Settings → Assistant → MCP server* generates the client token, creates the Homebridge API token in one click (read-only or admin, revoked again when you replace or remove it), and shows the client configs. Each secret is shown once; after that the page only says whether one is set.
+- **This plugin's settings page:** *Generate* creates a client token. Paste a Homebridge API token created in Glass UI under *Users → API Tokens*.
+- **The CLI:** set `HOMEBRIDGE_AI_MCP_TOKEN` and `HOMEBRIDGE_TOKEN` (see [MCP server](#mcp-server)), e.g. `HOMEBRIDGE_AI_MCP_TOKEN=$(openssl rand -base64 24)`.
+
+Changes to `mcp.http` apply after a Homebridge restart, since the plugin starts the HTTP server when Homebridge loads it. Treat both tokens like passwords: anyone with the client token can use every tool the Homebridge API token allows.
 
 ### Assistant routes for other plugins
 
