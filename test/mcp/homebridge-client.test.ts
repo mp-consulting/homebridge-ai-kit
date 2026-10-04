@@ -204,6 +204,16 @@ describe('HomebridgeClient', () => {
       expect(result).toEqual([{ name: 'Living Room' }]);
     });
 
+    it('getAccessoryHistory → GET /api/accessories/:id/history with only the options given', async () => {
+      const client = await clientWithAuth();
+      fetchMock.mockResolvedValueOnce(jsonResponse({ uniqueId: 'a b', from: 1, to: 2, series: [] }));
+      fetchMock.mockResolvedValueOnce(jsonResponse({ uniqueId: 'x', from: 1, to: 2, series: [] }));
+      expect(await client.getAccessoryHistory('a b', { hours: 12, type: 'CurrentTemperature', maxPoints: undefined })).toEqual({ uniqueId: 'a b', from: 1, to: 2, series: [] });
+      await client.getAccessoryHistory('x');
+      expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8581/api/accessories/a%20b/history?hours=12&type=CurrentTemperature');
+      expect(fetchMock.mock.calls[2][0]).toBe('http://localhost:8581/api/accessories/x/history');
+    });
+
     it('setAccessoryCharacteristic → PUT /api/accessories/:id', async () => {
       const client = await clientWithAuth();
       fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));

@@ -5,6 +5,12 @@ All notable changes to `@mp-consulting/homebridge-ai-core` will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `McpHttpConfig` / `resolveAiConfig` read `mcp.http.homebridgeCertFingerprint` and `mcp.http.homebridgeCertPath`: the SHA-256 fingerprint or PEM file of an https Homebridge UI's (self-signed) certificate that ai-kit's MCP server should trust.
+
 ## [2.0.2] - 2026-10-04
 
 2.0.1 was tagged but never published (its publish run failed on a lint error); 2.0.2 contains its fixes.

@@ -77,9 +77,16 @@ export class AiKitPlatform {
     let client: HomebridgeClient;
     try {
       const url = http.homebridgeUrl || process.env.HOMEBRIDGE_URL || DEFAULT_HOMEBRIDGE_URL;
-      client = new HomebridgeClient(http.homebridgeToken ? { url, token: http.homebridgeToken } : { url });
+      client = new HomebridgeClient({
+        url,
+        ...(http.homebridgeToken ? { token: http.homebridgeToken } : {}),
+        certFingerprint: http.homebridgeCertFingerprint,
+        certPath: http.homebridgeCertPath,
+      });
     } catch (error) {
-      this.log.error(`MCP over HTTP not started: ${(error as Error).message}. Set a Homebridge API token in the AI Kit settings.`);
+      const message = (error as Error).message;
+      const hint = /HOMEBRIDGE_(USERNAME|PASSWORD)/.test(message) ? ' Set a Homebridge API token in the AI Kit settings.' : '';
+      this.log.error(`MCP over HTTP not started: ${message}.${hint}`);
       return;
     }
     try {

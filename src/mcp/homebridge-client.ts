@@ -3,7 +3,9 @@
  * Handles JWT authentication, token refresh, and all API calls.
  */
 
-import type { Accessory, CachedAccessory, ChildBridge, Plugin, PluginJob, Room } from './types.js';
+import { readFileSync } from 'node:fs';
+import { createTrustedFetch } from './tls.js';
+import type { Accessory, AccessoryHistory, CachedAccessory, ChildBridge, Plugin, PluginJob, Room } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -51,6 +53,21 @@ export interface HomebridgeClientOptions {
   timeoutMs?: number;
   /** The fetch to call Homebridge with, e.g. one that trusts a self-signed certificate. Default: the global fetch. */
   fetch?: typeof fetch;
+  /**
+   * SHA-256 fingerprint of the certificate an https Homebridge UI presents, trusted even when
+   * self-signed (pinned: any other certificate is refused). Default: `HOMEBRIDGE_CERT_FINGERPRINT`.
+   * Ignored when `fetch` is given.
+   */
+  certFingerprint?: string;
+  /**
+   * PEM file with the Homebridge UI's own certificate or the CA that issued it, trusted on top
+   * of the public roots. Default: `HOMEBRIDGE_CERT_PATH`. Ignored when `fetch` is given.
+   */
+  certPath?: string;
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
 }
 
 type AuthMode = { kind: 'login'; username: string; password: string } | { kind: 'static'; token: string } | { kind: 'provider'; getToken: () => Promise<string> };
@@ -105,7 +122,32 @@ export class HomebridgeClient {
     }
 
     this.baseUrl = url.replace(/\/+$/, '');
-    this.fetchImpl = options.fetch;
+    this.fetchImpl = options.fetch ?? HomebridgeClient.trustedFetch(parsed, options);
+  }
+
+  /** A fetch trusting the configured certificate, or undefined when none is configured. */
+  private static trustedFetch(url: URL, options: HomebridgeClientOptions): typeof fetch | undefined {
+    const fingerprint = nonEmpty(options.certFingerprint ?? process.env.HOMEBRIDGE_CERT_FINGERPRINT);
+    const certPath = nonEmpty(options.certPath ?? process.env.HOMEBRIDGE_CERT_PATH);
+    if (!fingerprint && !certPath) {
+      return undefined;
+    }
+    if (url.protocol !== 'https:') {
+      throw new Error('HOMEBRIDGE_CERT_FINGERPRINT and HOMEBRIDGE_CERT_PATH only apply to an https HOMEBRIDGE_URL');
+    }
+    let certificatePem: string | undefined;
+    if (certPath) {
+      try {
+        certificatePem = readFileSync(certPath, 'utf8');
+      } catch (error) {
+        throw new Error(`Cannot read the certificate file HOMEBRIDGE_CERT_PATH (${certPath}): ${(error as Error).message}`, { cause: error });
+      }
+    }
+    try {
+      return createTrustedFetch({ fingerprint, certificatePem });
+    } catch (error) {
+      throw new Error(`Cannot trust the Homebridge UI certificate: ${(error as Error).message}`, { cause: error });
+    }
   }
 
   /** The Homebridge UI base URL, without a trailing slash. */
@@ -282,6 +324,26 @@ export class HomebridgeClient {
 
   async getAccessory(uniqueId: string): Promise<Accessory> {
     return this.request<Accessory>('GET', `/api/accessories/${encodeURIComponent(uniqueId)}`);
+  }
+
+  /**
+   * Recorded sensor values of one accessory (Glass UI only).
+   * @param options.hours How far back, 24 by default (Glass UI keeps `accessoryHistory.retentionDays`, 7 by default).
+   * @param options.type Only this characteristic, e.g. `CurrentTemperature`.
+   * @param options.maxPoints Glass UI averages each series down to at most this many points (2–5000, default 500).
+   */
+  async getAccessoryHistory(
+    uniqueId: string,
+    options: { hours?: number; type?: string; maxPoints?: number } = {},
+  ): Promise<AccessoryHistory> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined) {
+        query.set(key, String(value));
+      }
+    }
+    const qs = query.size ? `?${query}` : '';
+    return this.request<AccessoryHistory>('GET', `/api/accessories/${encodeURIComponent(uniqueId)}/history${qs}`);
   }
 
   async getAccessoryLayout(): Promise<Room[]> {

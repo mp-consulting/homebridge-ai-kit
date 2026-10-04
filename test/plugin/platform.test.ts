@@ -86,6 +86,13 @@ describe('AiKitPlatform', () => {
     expect(b.log.error.mock.calls[0][0]).toContain('Set a Homebridge API token');
   });
 
+  it('passes the trusted certificate settings to the Homebridge client', async () => {
+    const d = setup({ apiKey: 'k', mcp: { http: { enabled: true, token: 't', homebridgeUrl: 'http://127.0.0.1:8581', homebridgeToken: 'hbg', homebridgeCertFingerprint: 'AB' } } });
+    d.api.emit('didFinishLaunching');
+    await d.platform.ready;
+    expect(d.log.error).toHaveBeenCalledWith('MCP over HTTP not started: HOMEBRIDGE_CERT_FINGERPRINT and HOMEBRIDGE_CERT_PATH only apply to an https HOMEBRIDGE_URL.');
+  });
+
   it('logs a bind failure', async () => {
     vi.stubEnv('HOMEBRIDGE_AI_MCP_TOKEN', 'envtok');
     const c = setup({ apiKey: 'k', mcp: { http: { enabled: true, host: '203.0.113.1', port: 1, homebridgeToken: 'hbg' } } });

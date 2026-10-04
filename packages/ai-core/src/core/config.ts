@@ -42,6 +42,10 @@ export interface McpHttpConfig {
   homebridgeUrl?: string;
   /** Homebridge UI API token the MCP tools use (Glass UI `hbg_…`). Secret. */
   homebridgeToken?: string;
+  /** SHA-256 fingerprint of an https Homebridge UI's (self-signed) certificate to trust, pinned. */
+  homebridgeCertFingerprint?: string;
+  /** PEM file with the https Homebridge UI's own certificate or its CA, to trust. */
+  homebridgeCertPath?: string;
 }
 
 export interface AiConfig {
@@ -113,7 +117,7 @@ export function resolveAiConfig(block: unknown = {}): AiConfig {
       (config as unknown as Record<string, unknown>)[key] = value;
     }
   }
-  for (const key of ['token', 'homebridgeUrl', 'homebridgeToken'] as const) {
+  for (const key of ['token', 'homebridgeUrl', 'homebridgeToken', 'homebridgeCertFingerprint', 'homebridgeCertPath'] as const) {
     const value = str(http[key]);
     if (value !== undefined) {
       config.mcp.http[key] = value;

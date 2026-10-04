@@ -29,13 +29,13 @@ This repository is an npm workspace that publishes two packages, both at version
 | Package | Use it for | Runtime dependencies |
 |---|---|---|
 | [`@mp-consulting/homebridge-ai-core`](packages/ai-core) | **Homebridge plugins.** The plugin-UI Assistant routes (`registerAiRoutes` from `./plugin`), providers, redaction, prompts, config and the Assistant features (everything except `runAgent`). | `ajv` only |
-| `@mp-consulting/homebridge-ai-kit` (this package) | **Homebridge Glass UI and MCP.** Everything in ai-core (re-exported) plus the MCP server, `runAgent`, the `HomebridgeAiKit` Homebridge plugin and `mcpClientSnippets`. | ai-core, `@modelcontextprotocol/sdk`, `socket.io-client`, `zod`, `@homebridge/plugin-ui-utils` |
+| `@mp-consulting/homebridge-ai-kit` (this package) | **Homebridge Glass UI and MCP.** Everything in ai-core (re-exported) plus the MCP server, `runAgent`, the `HomebridgeAiKit` Homebridge plugin and `mcpClientSnippets`. | ai-core, `@modelcontextprotocol/sdk`, `socket.io-client`, `zod`, `undici`, `@homebridge/plugin-ui-utils` |
 
 Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP SDK, socket.io or zod. ai-kit stays backward compatible: its `.` and `./plugin` exports re-export everything ai-core has under the same names, so code that imports from ai-kit keeps working.
 
 ## Features
 
-**MCP tools** (31): accessories (list, get, control with value checks, room layout), server (status, restart, pairing, cached accessories), child bridges (list, restart, stop, start), config (read with secrets redacted, full write, partial `patch_config`), plugins (list, search, versions, schema, changelog, install, update, uninstall), system info and logs (recent lines, regex search).
+**MCP tools** (32): accessories (list, get, control with value checks, room layout, sensor history), server (status, restart, pairing, cached accessories), child bridges (list, restart, stop, start), config (read with secrets redacted, full write, partial `patch_config`), plugins (list, search, versions, schema, changelog, install, update, uninstall), system info and logs (recent lines, regex search).
 
 **MCP resources** you can subscribe to: `homebridge://accessories`, `homebridge://logs/recent`, `homebridge://status`. Changes arrive over the Homebridge UI's socket.io namespaces, or by polling when the socket can't be used.
 
@@ -86,7 +86,10 @@ Then open its settings in the Homebridge UI. The settings page edits the `Homebr
       "port": 8582,
       "token": "…",                   // bearer token MCP clients must send
       "homebridgeUrl": "http://127.0.0.1:8581",
-      "homebridgeToken": "hbg_…"      // Glass UI API token the tools act with
+      "homebridgeToken": "hbg_…",     // Glass UI API token the tools act with
+      "homebridgeTokenId": "…",       // written by Glass UI so it can revoke that token; leave as is
+      "homebridgeCertFingerprint": "AB:CD:…", // https UI with a self-signed certificate: its SHA-256 fingerprint
+      "homebridgeCertPath": "/path/to/certificate.pem" // or a PEM with the UI's certificate or its CA
     }
   }
 }
@@ -108,6 +111,19 @@ Where to set or generate them:
 - **Homebridge Glass UI 2.0.0-beta.6 or later:** *Settings → Assistant → MCP server* generates the client token, creates the Homebridge API token in one click (read-only or admin, revoked again when you replace or remove it), and shows the client configs. Each secret is shown once; after that the page only says whether one is set.
 - **This plugin's settings page:** *Generate* creates a client token. Paste a Homebridge API token created in Glass UI under *Users → API Tokens*.
 - **The CLI:** set `HOMEBRIDGE_AI_MCP_TOKEN` and `HOMEBRIDGE_TOKEN` (see [MCP server](#mcp-server)), e.g. `HOMEBRIDGE_AI_MCP_TOKEN=$(openssl rand -base64 24)`.
+
+Glass UI also stores `homebridgeTokenId`, the id of the API token it created, so it can revoke the token when you replace or remove it. The settings page keeps it (and any other field it doesn't show) when it saves.
+
+#### Homebridge UI over HTTPS with a self-signed certificate
+
+Node refuses a self-signed certificate, so the MCP server can't reach a Homebridge UI served that way until you tell it which certificate to trust. Verification is never turned off: the setting only applies to the server's requests to the Homebridge UI.
+
+| Setting | CLI | What it trusts |
+|---|---|---|
+| `mcp.http.homebridgeCertFingerprint` | `HOMEBRIDGE_CERT_FINGERPRINT` | Exactly the certificate with this SHA-256 fingerprint (pinned). Any other certificate, even a valid one, is refused with an error that shows both fingerprints. |
+| `mcp.http.homebridgeCertPath` | `HOMEBRIDGE_CERT_PATH` | The certificates in this PEM file, on top of the public CAs: the UI's own self-signed certificate (accepted under any host name, e.g. `127.0.0.1`) or the CA that issued it (with the normal host name check). |
+
+Get the fingerprint on the Homebridge machine with `openssl x509 -noout -fingerprint -sha256 -in <certificate.pem>` (Glass UI's self-signed certificate is `<storage>/ssl-certs/certificate.pem`); colons and case don't matter. Setting both requires the chain to validate against the PEM and the certificate to match the fingerprint. Update the fingerprint when the certificate is renewed. Both only apply to an `https` URL. Resource subscriptions then follow changes by polling, since the socket.io connection keeps Node's default verification.
 
 Changes to `mcp.http` apply after a Homebridge restart, since the plugin starts the HTTP server when Homebridge loads it. Treat both tokens like passwords: anyone with the client token can use every tool the Homebridge API token allows.
 
@@ -150,6 +166,8 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 | `HOMEBRIDGE_USERNAME` / `HOMEBRIDGE_PASSWORD` | UI login, when no token is set |
 | `HOMEBRIDGE_READ_ONLY` | `true` removes every tool that changes something |
 | `HOMEBRIDGE_TIMEOUT_MS` | Request timeout (default `30000`) |
+| `HOMEBRIDGE_CERT_FINGERPRINT` | SHA-256 fingerprint of an `https` Homebridge UI's self-signed certificate to trust (pinned). See [self-signed certificates](#homebridge-ui-over-https-with-a-self-signed-certificate) |
+| `HOMEBRIDGE_CERT_PATH` | PEM file with the `https` Homebridge UI's certificate or its CA to trust |
 | `HOMEBRIDGE_AI_MCP_TOKEN` | Bearer token required by `--http` |
 
 ### stdio (Claude Desktop, Claude Code, Cursor)
@@ -191,7 +209,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 
 | Group | Tools |
 |---|---|
-| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `get_accessory_layout` |
+| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `get_accessory_layout`, `get_accessory_history` |
 | Server | `get_homebridge_status`, `get_server_status`, `restart_homebridge`, `get_pairing_info`, `get_cached_accessories`, `remove_cached_accessory`, `reset_cached_accessories` |
 | Child bridges | `list_child_bridges`, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge` |
 | Config | `get_config`, `update_config`, `patch_config` |
@@ -200,6 +218,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 | Logs | `get_recent_logs`, `search_logs` |
 
 - `set_accessory` checks the value against the characteristic first (format, min/max, step, valid values, write permission), coerces `"50"` to `50` or `1` to `true`, and explains what is wrong instead of sending a bad value.
+- `get_accessory_history` returns an accessory's recorded sensor values (temperature, humidity, light level, battery, air quality, power, energy) over the last `hours` (default 24, up to 8760), optionally for one characteristic `type`. Per series it gives `count`, `min` / `max` (value and when), the time-weighted `avg`, `last`, and the `points` averaged down to `maxPoints` (default 48, 2–500), with times in UTC to the minute. It needs Homebridge Glass UI (`GET /api/accessories/:uniqueId/history`), which records these values while Homebridge runs in insecure mode.
 - `patch_config` changes one platform or accessory block (found by `platform`/`accessory` plus `name`); objects merge, `null` removes a key, and `__REDACTED__` keeps the current secret.
 - `install_plugin`, `update_plugin` and `uninstall_plugin` start a job on the Homebridge UI and wait up to two minutes for it; `get_plugin_job` follows a longer one. They need Homebridge Glass UI (`POST /api/plugins/install|update|uninstall`, `GET /api/plugins/jobs/:id`).
 - The log tools need a Homebridge install managed by [hb-service](https://github.com/homebridge/homebridge-config-ui-x/wiki/Homebridge-Service-Command).
@@ -252,6 +271,7 @@ Everything in this table except `runAgent` comes from `@mp-consulting/homebridge
 - **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default.
 - **`update_config` rejects incomplete configs**, and regex log searches run in a worker thread that is killed after 5 seconds.
 - The server warns if `HOMEBRIDGE_URL` sends credentials over plain `http` to a non-local host.
+- **TLS verification stays on.** A self-signed Homebridge UI certificate is trusted only through `HOMEBRIDGE_CERT_FINGERPRINT` / `HOMEBRIDGE_CERT_PATH` (or the matching `mcp.http` settings), and only for the requests to the Homebridge UI; a certificate that doesn't match is refused.
 
 ## Migrating from homebridge-mcp-server
 

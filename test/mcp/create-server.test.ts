@@ -22,7 +22,7 @@ const WRITE_TOOLS = [
   'start_child_bridge',
 ];
 
-const TOOL_COUNT = 31;
+const TOOL_COUNT = 32;
 
 /** Connect a real MCP client to the server over an in-memory transport. */
 async function connect(client: HomebridgeClient = mockClient(), options: ServerOptions = {}) {
@@ -42,7 +42,7 @@ describe('createServer', () => {
     expect(mcp.getServerVersion()).toEqual({ name: 'homebridge-ai-kit', version: pkg.version });
   });
 
-  it('registers all 31 tools with titles and annotations', async () => {
+  it('registers all 32 tools with titles and annotations', async () => {
     const { tools } = await (await connect()).listTools();
 
     expect(tools).toHaveLength(TOOL_COUNT);
@@ -81,6 +81,16 @@ describe('createServer', () => {
     await mcp.callTool({ name: 'update_config', arguments: { config } });
 
     expect(client.updateConfig).toHaveBeenCalledWith(config);
+  });
+
+  it('validates get_accessory_history input before calling Homebridge', async () => {
+    const client = mockClient({ getAccessoryHistory: vi.fn() });
+    const mcp = await connect(client);
+    for (const args of [{ uniqueId: 'a', hours: 0 }, { uniqueId: 'a', hours: 9000 }, { uniqueId: 'a', maxPoints: 1 }, { uniqueId: 'a', type: '../x' }]) {
+      const result = await mcp.callTool({ name: 'get_accessory_history', arguments: args });
+      expect(result.isError, JSON.stringify(args)).toBe(true);
+    }
+    expect(client.getAccessoryHistory).not.toHaveBeenCalled();
   });
 
   it('runs a tool end to end', async () => {
