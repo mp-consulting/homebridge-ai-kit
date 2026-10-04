@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -69,6 +69,33 @@ describe('registerAiRoutes', () => {
     ]);
     expect(requests[0].system).toContain('homebridge-ewelink');
     expect(requests[0].system).toContain('Devices are Sonoff.');
+  });
+
+  it('cancels a request in flight with /ai/cancel', async () => {
+    const config = resolveAiConfig({ apiKey: 'k' });
+    let seen: AbortSignal | undefined;
+    const fake = fakeProvider([]);
+    const provider = {
+      ...fake.provider,
+      // Never answers: ends only when the request is aborted.
+      async *stream(req: { signal?: AbortSignal }) {
+        seen = req.signal;
+        yield { type: 'text', delta: 'Hel' };
+        await new Promise((_, reject) => req.signal?.addEventListener('abort', () => reject(req.signal?.reason)));
+      },
+    } as unknown as typeof fake.provider;
+    const ui = fakeServer();
+    registerAiRoutes(ui.server, { loadConfig: async () => config, createProvider: () => provider });
+
+    const pending = ui.call('/ai/ask', { prompt: 'hi', requestId: 'r9' });
+    await vi.waitFor(() => expect(seen).toBeDefined());
+    expect(await ui.call('/ai/cancel', { requestId: 'r9' })).toEqual({ cancelled: true });
+    await expect(pending).rejects.toThrow('cancelled');
+    expect(seen?.aborted).toBe(true);
+    // The browser already gave up: no error event, and the id is forgotten.
+    expect(ui.events).toEqual([['ai:chunk', { requestId: 'r9', delta: 'Hel' }]]);
+    expect(await ui.call('/ai/cancel', { requestId: 'r9' })).toEqual({ cancelled: false });
+    expect(await ui.call('/ai/cancel', {})).toEqual({ cancelled: false });
   });
 
   it('answers a question without streaming when there is no requestId', async () => {

@@ -39,6 +39,7 @@ new UiServer();
 | `/ai/explain` | `{ error, context?, device?, requestId? }` | `{ text, usage }` |
 | `/ai/ask` | `{ prompt, context?, requestId? }` | `{ text, usage }` |
 | `/ai/config` | `{ schema, request, current?, requestId? }` | `{ config, explanation, usage }` |
+| `/ai/cancel` | `{ requestId }` | `{ cancelled }`: stops that request's provider call (ui-kit 1.3's `MpKit.ai` sends it when a request is cancelled) |
 
 With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events, then `ai:done` `{ requestId }` or `ai:error` `{ requestId, message }`. The config is re-read on every request, so settings changes apply at once. Inputs are redacted before they reach a provider.
 
