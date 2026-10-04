@@ -9,6 +9,7 @@ import { DEFAULT_HOMEBRIDGE_URL, createProvider, resolveAiConfig } from '@mp-con
 import { HomebridgeClient } from '../mcp/homebridge-client.js';
 import type { RunningHttpServer } from '../mcp/http.js';
 import { runHttpServer } from '../mcp/http.js';
+import { createAuditLog, defaultAuditLogPath } from '../mcp/audit.js';
 
 /** The slice of Homebridge's logger, config and API the platform needs (no runtime dependency on homebridge). */
 export interface PlatformLogger {
@@ -19,6 +20,8 @@ export interface PlatformLogger {
 
 export interface PlatformApi {
   on(event: 'didFinishLaunching' | 'shutdown', listener: () => void): unknown;
+  /** Homebridge's storage directory (where config.json lives). */
+  user?: { storagePath(): string };
 }
 
 export class AiKitPlatform {
@@ -30,7 +33,7 @@ export class AiKitPlatform {
   constructor(
     private readonly log: PlatformLogger,
     rawConfig: unknown,
-    api: PlatformApi,
+    private readonly api: PlatformApi,
   ) {
     try {
       this.config = resolveAiConfig(rawConfig);
@@ -70,7 +73,7 @@ export class AiKitPlatform {
       return;
     }
     const token = http.token || process.env.HOMEBRIDGE_AI_MCP_TOKEN;
-    if (!token) {
+    if (!token && !http.clients?.length) {
       this.log.error('MCP over HTTP is enabled but has no token. Set one in the AI Kit settings.');
       return;
     }
@@ -90,8 +93,26 @@ export class AiKitPlatform {
       return;
     }
     try {
-      this.http = await runHttpServer({ host: http.host, port: http.port, token, client });
-      this.log.info(`MCP server listening at ${this.http.url}`);
+      const audit = http.auditLog === false
+        ? undefined
+        : createAuditLog({
+          path: http.auditLogPath ?? defaultAuditLogPath(this.api.user?.storagePath()),
+          onError: (error) => this.log.warn(`MCP audit log: ${error.message}`),
+        });
+      this.http = await runHttpServer({
+        host: http.host,
+        port: http.port,
+        token,
+        clients: http.clients,
+        client,
+        readOnly: http.readOnly,
+        allowedOrigins: http.allowedOrigins,
+        audit,
+      });
+      this.log.info(`MCP server listening at ${this.http.url}${http.readOnly ? ' (read-only)' : ''}`);
+      if (audit) {
+        this.log.info(`MCP write tool calls are logged to ${audit.path}`);
+      }
     } catch (error) {
       this.log.error(`MCP over HTTP not started: ${(error as Error).message}`);
     }

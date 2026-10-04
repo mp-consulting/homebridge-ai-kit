@@ -9,6 +9,8 @@ export default defineConfig({
     alias: [
       { find: /^@mp-consulting\/homebridge-ai-core\/plugin$/, replacement: core('plugin/index.ts') },
       { find: /^@mp-consulting\/homebridge-ai-core$/, replacement: core('index.ts') },
+      // homebridge-ui/server.js imports the built plugin; its test runs against the sources.
+      { find: /^\.\.\/dist\/plugin\/index\.js$/, replacement: fileURLToPath(new URL('./src/plugin/index.ts', import.meta.url)) },
     ],
   },
   test: {
@@ -23,7 +25,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // bin/ and stdio.ts only wire env vars to createServer() and stdio, which is covered by create-server.test.ts.
+      // bin/ and stdio.ts start real transports (stdin/stdout, signal handlers); their env parsing is unit-tested in stdio.test.ts.
       exclude: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**', 'src/bin/**', 'src/mcp/stdio.ts'],
       thresholds: {
         statements: 95,

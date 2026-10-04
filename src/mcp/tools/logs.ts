@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { HomebridgeClient } from '../homebridge-client.js';
 import type { RegisterTools } from '../types.js';
 import { RegexTimeoutError, regexSearch } from '../regex-search.js';
-import { READ, errorMessage, errorResult, handle, textResult } from './helpers.js';
+import { READ, errorMessage, errorResult, handle, textResult, untrusted } from './helpers.js';
 import { LOG_SEARCH } from './output-schemas.js';
 import { atLeast, parseLogLines, parseTimeBound } from '../log-parse.js';
 
@@ -77,7 +77,7 @@ export const register: RegisterTools = (tool, client) => {
       const { lines: all, truncated } = await readLogTail(client);
       const body = all.slice(-n).join('\n');
       const note = truncationNote(truncated);
-      return textResult(note && body ? `${note}\n\n${body}` : note || body);
+      return textResult(note && body ? `${note}\n\n${untrusted('homebridge-log', body)}` : note || (body && untrusted('homebridge-log', body)));
     }),
   );
 
@@ -195,7 +195,7 @@ export const register: RegisterTools = (tool, client) => {
           return { line: i + 1, time: e.time === undefined ? null : new Date(e.time).toISOString(), level: e.level, plugin: e.prefix ?? null, text: e.text };
         }),
       };
-      return { ...textResult(body ? `${header}\n\n${body}` : header), structuredContent: structured };
+      return { ...textResult(body ? `${header}\n\n${untrusted('homebridge-log', body)}` : header), structuredContent: structured };
     }),
   );
 };

@@ -1,44 +1,123 @@
 /**
  * Streamable HTTP transport for outside MCP clients. Every request needs
  * `Authorization: Bearer <token>`; each MCP session gets its own server.
+ * Browser requests must come from an allowed `Origin` (DNS-rebinding
+ * protection), idle sessions expire, and repeated bad tokens from one
+ * address are slowed down.
  */
 
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { createServer as createHttpServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { isIP } from 'node:net';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { createServer } from './create-server.js';
 import type { HomebridgeClient } from './homebridge-client.js';
 import type { LiveSource } from './live.js';
+import { createLiveSource, shareLiveSource } from './live.js';
+import type { AuditSink } from './audit.js';
+import type { ClientToken, Scope } from './scopes.js';
+import { isScope } from './scopes.js';
 
 export const MCP_PATH = '/mcp';
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+export const DEFAULT_MAX_SESSIONS = 32;
+export const DEFAULT_SESSION_IDLE_MS = 30 * 60_000;
+/** Bad tokens an address may send before it has to wait. */
+export const AUTH_FREE_FAILURES = 5;
+/** The wait doubles with every further bad token, up to this. */
+export const AUTH_MAX_DELAY_MS = 5 * 60_000;
+/** An address's failures are forgotten this long after its last one. */
+const AUTH_FORGET_MS = 15 * 60_000;
+const AUTH_MAX_TRACKED = 10_000;
 
 export interface HttpServerOptions {
   port?: number;
   /** Default 127.0.0.1. Binding elsewhere exposes Homebridge control to the network. */
   host?: string;
-  /** Bearer token every request must carry. Required. */
-  token: string;
+  /** The main bearer token: full (`admin`) access, or `read` with `readOnly`. Required unless `clients` has one. */
+  token?: string;
+  /** More bearer tokens, each with its own scope (`read`, `control` or `admin`). */
+  clients?: ClientToken[];
   client: HomebridgeClient;
+  /** Caps every token at `read`. */
   readOnly?: boolean;
+  /** Records every write tool call, with the token's name and scope. */
+  audit?: AuditSink;
+  /** Let `get_config` return real secrets when asked; ignored in read-only mode. */
+  allowSecrets?: boolean;
+  /** Change feed for `resources/subscribe`, shared by every session. Default: {@link createLiveSource}. */
   live?: LiveSource | false;
+  /**
+   * Browser origins allowed besides loopback ones (`http://localhost:3000`) and
+   * the server's own IP address. `*` allows any. Requests without an `Origin`
+   * header (non-browser clients) are always allowed.
+   */
+  allowedOrigins?: string[];
+  /** Most concurrent sessions; the least recently used idle one is closed to make room. Default 32. */
+  maxSessions?: number;
+  /** A session with no request for this long is closed. Default 30 minutes. */
+  sessionIdleMs?: number;
 }
 
 export interface RunningHttpServer {
   server: Server;
   /** e.g. http://127.0.0.1:8582/mcp */
   url: string;
+  /** Open MCP sessions. */
+  sessionCount(): number;
+  /** Closes idle sessions now (also runs on a timer). `now` is for tests. */
+  sweep(now?: number): void;
   close(): Promise<void>;
 }
 
-function sameToken(given: string, expected: string): boolean {
-  // Hash both so the comparison is constant-time regardless of length.
-  const a = createHash('sha256').update(given).digest();
-  const b = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(a, b);
+interface Principal {
+  name: string;
+  scope: Scope;
+  /** SHA-256 of the token: comparing hashes is constant-time regardless of length. */
+  hash: Buffer;
+}
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest();
+
+function principals(options: HttpServerOptions): Principal[] {
+  const list: Array<{ token: string; scope: unknown; name?: string }> = [];
+  if (options.token) {
+    list.push({ token: options.token, scope: 'admin', name: 'default' });
+  }
+  (options.clients ?? []).forEach((c, i) => list.push({ ...c, name: c.name?.trim() || `client-${i + 1}` }));
+  if (list.length === 0) {
+    throw new Error('A bearer token is required to serve MCP over HTTP (set HOMEBRIDGE_AI_MCP_TOKEN)');
+  }
+  const seen = new Set<string>();
+  return list.map(({ token, scope, name }) => {
+    if (!token?.trim()) {
+      throw new Error(`MCP client "${name}" has no token`);
+    }
+    if (!isScope(scope)) {
+      throw new Error(`MCP client "${name}" has an unknown scope ${JSON.stringify(scope)}; use read, control or admin`);
+    }
+    if (seen.has(token)) {
+      throw new Error(`MCP client "${name}" reuses another client's token`);
+    }
+    seen.add(token);
+    return { name: name!, scope: options.readOnly ? 'read' : scope, hash: sha256(token) };
+  });
+}
+
+/** The principal whose token matches; every token is compared so timing doesn't reveal which. */
+function authenticate(given: string, all: Principal[]): Principal | undefined {
+  const hash = sha256(given);
+  let match: Principal | undefined;
+  for (const p of all) {
+    if (timingSafeEqual(hash, p.hash) && !match) {
+      match = p;
+    }
+  }
+  return match;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
@@ -47,6 +126,92 @@ function sendJson(res: ServerResponse, status: number, body: unknown, headers: R
 
 function rpcError(res: ServerResponse, status: number, message: string, headers?: Record<string, string>): void {
   sendJson(res, status, { jsonrpc: '2.0', error: { code: -32000, message }, id: null }, headers);
+}
+
+function normalizeOrigin(origin: string): string {
+  if (origin === '*' || origin === 'null') {
+    return origin;
+  }
+  try {
+    return new URL(origin).origin;
+  } catch {
+    throw new Error(`Invalid allowed origin "${origin}" (expected e.g. https://example.com:8443)`);
+  }
+}
+
+function isLoopback(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return h === 'localhost' || h.endsWith('.localhost') || h === '::1' || /^127\.\d+\.\d+\.\d+$/.test(h);
+}
+
+/**
+ * The MCP spec requires validating `Origin` so a web page can't reach a local
+ * server through DNS rebinding. A rebinding page has a domain-name origin that
+ * matches its `Host` header, so "same host" only counts for IP-literal hosts.
+ */
+export function isOriginAllowed(origin: string | undefined, host: string | undefined, allowed: ReadonlySet<string>): boolean {
+  if (origin === undefined) {
+    return true;
+  }
+  if (allowed.has('*') || allowed.has(origin)) {
+    return true;
+  }
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (allowed.has(url.origin) || isLoopback(url.hostname)) {
+    return true;
+  }
+  return url.host === host?.toLowerCase() && isIP(url.hostname.replace(/^\[|\]$/g, '')) !== 0;
+}
+
+/** Per-address count of bad tokens, with an exponential wait once it passes {@link AUTH_FREE_FAILURES}. */
+class AuthThrottle {
+  private readonly failures = new Map<string, { count: number; last: number; blockedUntil: number }>();
+
+  /** Milliseconds `address` must still wait, or 0. */
+  retryAfter(address: string, now = Date.now()): number {
+    const entry = this.failures.get(address);
+    return entry && entry.blockedUntil > now ? entry.blockedUntil - now : 0;
+  }
+
+  fail(address: string, now = Date.now()): void {
+    const entry = this.failures.get(address) ?? { count: 0, last: now, blockedUntil: 0 };
+    entry.count++;
+    entry.last = now;
+    if (entry.count > AUTH_FREE_FAILURES) {
+      entry.blockedUntil = now + Math.min(1000 * 2 ** (entry.count - AUTH_FREE_FAILURES - 1), AUTH_MAX_DELAY_MS);
+    }
+    this.failures.delete(address);
+    this.failures.set(address, entry);
+    if (this.failures.size > AUTH_MAX_TRACKED) {
+      this.failures.delete(this.failures.keys().next().value!);
+    }
+  }
+
+  succeed(address: string): void {
+    this.failures.delete(address);
+  }
+
+  prune(now = Date.now()): void {
+    for (const [address, entry] of this.failures) {
+      if (now - entry.last > AUTH_FORGET_MS && entry.blockedUntil <= now) {
+        this.failures.delete(address);
+      }
+    }
+  }
+}
+
+interface Session {
+  transport: StreamableHTTPServerTransport;
+  /** The token that opened it; other tokens can't use it. */
+  principal: Principal;
+  lastSeen: number;
+  /** Requests (including open SSE streams) still in progress; a busy session is never idle. */
+  active: number;
 }
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
@@ -64,26 +229,80 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 }
 
 export async function runHttpServer(options: HttpServerOptions): Promise<RunningHttpServer> {
-  const { token, client } = options;
-  if (!token) {
-    throw new Error('A bearer token is required to serve MCP over HTTP (set HOMEBRIDGE_AI_MCP_TOKEN)');
-  }
+  const { client } = options;
+  const known = principals(options);
   const host = options.host ?? '127.0.0.1';
-  const transports = new Map<string, StreamableHTTPServerTransport>();
+  const allowedOrigins = new Set((options.allowedOrigins ?? []).map((o) => o.trim()).filter(Boolean).map(normalizeOrigin));
+  const maxSessions = Math.max(1, options.maxSessions ?? DEFAULT_MAX_SESSIONS);
+  const idleMs = options.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
+  // One change feed for all sessions: N clients subscribed to a topic share one socket.
+  const live = options.live === false ? false : shareLiveSource(options.live ?? createLiveSource(client));
+  const sessions = new Map<string, Session>();
+  const throttle = new AuthThrottle();
+
+  const sweep = (now = Date.now()) => {
+    for (const session of sessions.values()) {
+      if (session.active === 0 && now - session.lastSeen >= idleMs) {
+        void session.transport.close();
+      }
+    }
+    throttle.prune(now);
+  };
+  const sweeper = setInterval(sweep, Math.max(1000, Math.min(idleMs / 2, 60_000)));
+  sweeper.unref();
+
+  /** Closes the least recently used idle session; false when every session is busy. */
+  const evictOne = (): boolean => {
+    let oldest: Session | undefined;
+    for (const session of sessions.values()) {
+      if (session.active === 0 && (!oldest || session.lastSeen < oldest.lastSeen)) {
+        oldest = session;
+      }
+    }
+    if (!oldest) {
+      return false;
+    }
+    sessions.delete(oldest.transport.sessionId!);
+    void oldest.transport.close();
+    return true;
+  };
+
+  const track = (session: Session, res: ServerResponse) => {
+    session.lastSeen = Date.now();
+    session.active++;
+    res.once('close', () => {
+      session.active--;
+      session.lastSeen = Date.now();
+    });
+  };
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     const path = new URL(req.url ?? '/', 'http://localhost').pathname;
     if (path !== MCP_PATH) {
       return rpcError(res, 404, `Not found; the MCP endpoint is ${MCP_PATH}`);
     }
+    if (!isOriginAllowed(req.headers.origin, req.headers.host, allowedOrigins)) {
+      return rpcError(res, 403, 'Forbidden: origin not allowed');
+    }
+    const address = req.socket.remoteAddress ?? 'unknown';
+    const wait = throttle.retryAfter(address);
+    if (wait > 0) {
+      return rpcError(res, 429, 'Too many failed authentication attempts', { 'Retry-After': String(Math.ceil(wait / 1000)) });
+    }
     const auth = req.headers.authorization ?? '';
     const given = /^Bearer\s+(.+)$/i.exec(auth)?.[1]?.trim() ?? '';
-    if (!given || !sameToken(given, token)) {
+    const principal = given ? authenticate(given, known) : undefined;
+    if (!principal) {
+      throttle.fail(address);
       return rpcError(res, 401, 'Unauthorized', { 'WWW-Authenticate': 'Bearer realm="homebridge-ai-kit"' });
     }
+    throttle.succeed(address);
 
     const sessionId = req.headers['mcp-session-id'];
-    const existing = typeof sessionId === 'string' ? transports.get(sessionId) : undefined;
+    const existing = typeof sessionId === 'string' ? sessions.get(sessionId) : undefined;
+    if (existing && existing.principal !== principal) {
+      return rpcError(res, 403, 'Forbidden: this session belongs to another token');
+    }
 
     if (req.method === 'POST') {
       let body: unknown;
@@ -93,25 +312,39 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
         return rpcError(res, 400, `Invalid request body: ${(error as Error).message}`);
       }
       if (existing) {
-        return existing.handleRequest(req, res, body);
+        track(existing, res);
+        return existing.transport.handleRequest(req, res, body);
       }
       if (sessionId !== undefined || !isInitializeRequest(body)) {
         return rpcError(res, sessionId === undefined ? 400 : 404, sessionId === undefined ? 'Missing mcp-session-id' : 'Unknown session');
       }
+      if (sessions.size >= maxSessions && !evictOne()) {
+        return rpcError(res, 503, `Too many active sessions (max ${maxSessions})`);
+      }
+      const session: Session = { transport: undefined as unknown as StreamableHTTPServerTransport, principal, lastSeen: Date.now(), active: 0 };
       const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
-          transports.set(id, transport);
+          sessions.set(id, session);
         },
       });
-      const server = createServer(client, { readOnly: options.readOnly, live: options.live });
+      session.transport = transport;
+      const server = createServer(client, {
+        readOnly: options.readOnly,
+        scope: principal.scope,
+        allowSecrets: options.allowSecrets,
+        live,
+        audit: options.audit,
+        principal: principal.name,
+      });
       transport.onclose = () => {
-        if (transport.sessionId) {
-          transports.delete(transport.sessionId);
+        if (transport.sessionId && sessions.get(transport.sessionId) === session) {
+          sessions.delete(transport.sessionId);
         }
         void server.close();
       };
       await server.connect(transport);
+      track(session, res);
       return transport.handleRequest(req, res, body);
     }
 
@@ -119,7 +352,8 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
       if (!existing) {
         return rpcError(res, sessionId === undefined ? 400 : 404, sessionId === undefined ? 'Missing mcp-session-id' : 'Unknown session');
       }
-      return existing.handleRequest(req, res);
+      track(existing, res);
+      return existing.transport.handleRequest(req, res);
     }
 
     return rpcError(res, 405, 'Method not allowed', { Allow: 'GET, POST, DELETE' });
@@ -136,9 +370,12 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
   });
 
   await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
+    server.once('error', (error) => {
+      clearInterval(sweeper);
+      reject(error);
+    });
     server.listen(options.port ?? 8582, host, () => {
-      server.off('error', reject);
+      server.removeAllListeners('error');
       resolve();
     });
   });
@@ -148,9 +385,12 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
   return {
     server,
     url: `http://${urlHost}:${address.port}${MCP_PATH}`,
+    sessionCount: () => sessions.size,
+    sweep,
     async close() {
-      await Promise.all([...transports.values()].map((t) => t.close()));
-      transports.clear();
+      clearInterval(sweeper);
+      await Promise.all([...sessions.values()].map((s) => s.transport.close()));
+      sessions.clear();
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },

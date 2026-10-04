@@ -145,3 +145,39 @@ export function createLiveSource(client: HomebridgeClient, options: LiveOptions 
     };
   };
 }
+
+/**
+ * Wraps a source so every topic has at most one underlying watch (one socket
+ * or poller), however many MCP sessions subscribe. The watch opens with the
+ * first subscriber and closes with the last.
+ */
+export function shareLiveSource(source: LiveSource): LiveSource {
+  const topics = new Map<LiveTopic, { watch: LiveWatch; listeners: Set<() => void> }>();
+  return (topic, onChange) => {
+    let entry = topics.get(topic);
+    if (!entry) {
+      const listeners = new Set<() => void>();
+      const watch = source(topic, () => {
+        for (const listener of [...listeners]) {
+          listener();
+        }
+      });
+      entry = { watch, listeners };
+      topics.set(topic, entry);
+    }
+    const listener = () => onChange();
+    entry.listeners.add(listener);
+    const shared = entry;
+    return {
+      close() {
+        if (!shared.listeners.delete(listener) || shared.listeners.size > 0) {
+          return;
+        }
+        shared.watch.close();
+        if (topics.get(topic) === shared) {
+          topics.delete(topic);
+        }
+      },
+    };
+  };
+}

@@ -5,7 +5,13 @@ import type { ToolRegistrar } from './tools/helpers.js';
  * Signature for tool registration functions.
  * Each tools/*.ts file exports a `register` function matching this type.
  */
-export type RegisterTools = (tool: ToolRegistrar, client: HomebridgeClient) => void;
+export type RegisterTools = (tool: ToolRegistrar, client: HomebridgeClient, options?: ToolOptions) => void;
+
+/** Server-wide settings some tools read. */
+export interface ToolOptions {
+  /** `get_config` may return real secret values (`includeSecrets`). Never true in read-only mode. */
+  allowSecrets?: boolean;
+}
 
 // ── Homebridge UI API shapes ──────────────────────────────────────
 // Only the fields this server reads are typed; the API returns more.

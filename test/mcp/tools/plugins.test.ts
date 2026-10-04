@@ -104,10 +104,10 @@ describe('plugins tools', () => {
   });
 
   describe('get_plugin_changelog', () => {
-    it('returns string changelog as-is', async () => {
+    it('returns a string changelog marked as untrusted data', async () => {
       const { handlers } = handlersFor();
       const result = await handlers.get('get_plugin_changelog')!({ pluginName: 'homebridge-hue' });
-      expect(result.content[0].text).toBe('# Changelog\n## 1.0.0');
+      expect(result.content[0].text).toBe('<untrusted-data source="changelog:homebridge-hue">\n# Changelog\n## 1.0.0\n</untrusted-data>');
     });
 
     it('stringifies non-string changelog', async () => {

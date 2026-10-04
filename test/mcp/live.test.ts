@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LIVE_TOPICS, createLiveSource } from '../../src/mcp/live.js';
-import type { LiveSocket } from '../../src/mcp/live.js';
+import { LIVE_TOPICS, createLiveSource, shareLiveSource } from '../../src/mcp/live.js';
+import type { LiveSocket, LiveSource } from '../../src/mcp/live.js';
 import { mockClient } from './helpers.js';
 
 /** A socket whose emit() records outgoing messages; `fire` simulates incoming events. */
@@ -136,5 +136,36 @@ describe('createLiveSource', () => {
     resolve({});
     await new Promise((r) => setTimeout(r, 30));
     expect(client.getHomebridgeStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('shareLiveSource', () => {
+  it('opens one watch per topic and closes it with the last subscriber', () => {
+    const fire: Record<string, () => void> = {};
+    const close = vi.fn();
+    const source = vi.fn<LiveSource>((topic, onChange) => {
+      fire[topic] = onChange;
+      return { close };
+    });
+    const shared = shareLiveSource(source);
+    const a = vi.fn();
+    const b = vi.fn();
+    const wa = shared('log', a);
+    const wb = shared('log', b);
+    const ws = shared('status', vi.fn());
+    expect(source).toHaveBeenCalledTimes(2);
+    fire.log();
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).toHaveBeenCalledTimes(1);
+    wa.close();
+    wa.close();
+    expect(close).not.toHaveBeenCalled();
+    fire.log();
+    expect(a).toHaveBeenCalledTimes(1);
+    wb.close();
+    ws.close();
+    expect(close).toHaveBeenCalledTimes(2);
+    shared('log', vi.fn());
+    expect(source).toHaveBeenCalledTimes(3);
   });
 });

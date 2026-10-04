@@ -17,7 +17,7 @@ describe('resolveAiConfig', () => {
       provider: 'anthropic',
       model: 'claude-sonnet-5-5',
       maxOutputTokens: 2048,
-      mcp: { http: { enabled: false, host: '127.0.0.1', port: 8582 } },
+      mcp: { http: { enabled: false, host: '127.0.0.1', port: 8582, readOnly: false, auditLog: true } },
     });
     expect(resolveAiConfig('nonsense').provider).toBe('anthropic');
   });
@@ -36,7 +36,7 @@ describe('resolveAiConfig', () => {
       maxOutputTokens: '512',
       contextTokens: 32768,
       maxRetries: '0',
-      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: ' AB:CD ', homebridgeCertPath: '/certs/hb.pem' } },
+      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: ' AB:CD ', homebridgeCertPath: '/certs/hb.pem', allowedOrigins: [' https://a.example ', '', 3] } },
     });
     expect(config).toMatchObject({
       name: 'Mine',
@@ -47,8 +47,9 @@ describe('resolveAiConfig', () => {
       maxOutputTokens: 512,
       contextTokens: 32768,
       maxRetries: 0,
-      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: 'AB:CD', homebridgeCertPath: '/certs/hb.pem' } },
+      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: 'AB:CD', homebridgeCertPath: '/certs/hb.pem', allowedOrigins: ['https://a.example'] } },
     });
+    expect(resolveAiConfig({ mcp: { http: { allowedOrigins: 'https://a.example, http://b' } } }).mcp.http.allowedOrigins).toEqual(['https://a.example', 'http://b']);
   });
 
   it('ignores empty optional strings', () => {
@@ -56,6 +57,30 @@ describe('resolveAiConfig', () => {
     expect(config.apiKey).toBeUndefined();
     expect(config.baseUrl).toBeUndefined();
     expect(config.mcp.http.token).toBeUndefined();
+    expect(resolveAiConfig({ mcp: { http: { allowedOrigins: [] } } }).mcp.http.allowedOrigins).toBeUndefined();
+    expect(resolveAiConfig({ mcp: { http: { allowedOrigins: 7 } } }).mcp.http.allowedOrigins).toBeUndefined();
+  });
+
+  it('reads read-only mode, scoped client tokens and the audit log settings', () => {
+    const http = resolveAiConfig({
+      mcp: {
+        http: {
+          readOnly: true,
+          auditLog: false,
+          auditLogPath: ' /var/log/audit.jsonl ',
+          clients: [{ name: 'Dashboard', token: ' r ', scope: 'read' }, { token: 'c', scope: 'control' }, { token: 'x' }, { name: 'empty row' }, 'junk'],
+        },
+      },
+    }).mcp.http;
+    expect(http).toMatchObject({
+      readOnly: true,
+      auditLog: false,
+      auditLogPath: '/var/log/audit.jsonl',
+      clients: [{ name: 'Dashboard', token: 'r', scope: 'read' }, { token: 'c', scope: 'control' }, { token: 'x', scope: 'read' }],
+    });
+    expect(resolveAiConfig({ mcp: { http: { clients: [{ name: 'x' }] } } }).mcp.http.clients).toBeUndefined();
+    expect(resolveAiConfig({ mcp: { http: { clients: 'x' } } }).mcp.http.clients).toBeUndefined();
+    expect(() => resolveAiConfig({ mcp: { http: { clients: [{ token: 't', scope: 'root' }] } } })).toThrow('mcp.http.clients[0].scope must be one of read, control, admin');
   });
 
   it('rejects unknown providers and bad numbers', () => {

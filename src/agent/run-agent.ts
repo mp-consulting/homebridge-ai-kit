@@ -8,6 +8,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { createServer, VERSION } from '../mcp/create-server.js';
 import type { HomebridgeClient } from '../mcp/homebridge-client.js';
+import { untrusted } from '../mcp/tools/helpers.js';
 import { PROMPTS, addUsage, complete } from '@mp-consulting/homebridge-ai-core';
 import type { AiProvider, ChatMessage, ChatResult, ContentPart, TokenUsage, ToolCall, ToolDefinition } from '@mp-consulting/homebridge-ai-core';
 
@@ -117,6 +118,8 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
         onEvent?.({ type: 'tool_call', call });
         let result: string;
         let isError: boolean;
+        // What the model sees: tool output carries Homebridge text (names, logs), so it goes back as untrusted data.
+        let content: string | undefined;
         if (destructive.has(call.name) && !(await options.confirm?.(call))) {
           result = `The user did not allow ${call.name}. Do not retry it; explain what it would have done instead.`;
           isError = true;
@@ -125,14 +128,16 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
             const out = await mcp.callTool({ name: call.name, arguments: call.arguments });
             result = resultText(out);
             isError = out.isError === true;
+            content = untrusted(call.name, result);
           } catch (error) {
             result = error instanceof Error ? error.message : String(error);
             isError = true;
+            content = untrusted(call.name, result);
           }
         }
         onEvent?.({ type: 'tool_result', call, result, isError });
         toolCalls.push({ ...call, result, isError });
-        results.push({ type: 'tool_result', toolCallId: call.id, name: call.name, content: result, isError });
+        results.push({ type: 'tool_result', toolCallId: call.id, name: call.name, content: content ?? result, isError });
       }
       messages.push({ role: 'user', content: results });
     }
