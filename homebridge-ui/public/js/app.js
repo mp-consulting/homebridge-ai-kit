@@ -3,13 +3,13 @@
   const PLATFORM = 'HomebridgeAiKit';
   const DEFAULT_MODELS = {
     anthropic: 'claude-sonnet-5-5',
-    openai: 'gpt-5',
+    openai: 'gpt-6.1-sol',
     gemini: 'gemini-3.8-flash',
     'openai-compatible': 'llama3.1',
   };
   const MODEL_HELP = {
     anthropic: 'e.g. claude-sonnet-5-5 (default), claude-haiku-4-5-20251001 (cheapest), claude-opus-5-5 (most capable).',
-    openai: 'e.g. gpt-5.',
+    openai: 'e.g. gpt-6.1-sol (default), gpt-6-luna (cheapest), gpt-6-astra (most capable).',
     gemini: 'e.g. gemini-3.8-flash or gemini-3.5-flash-lite.',
     'openai-compatible': 'The model name your server knows, e.g. llama3.1 or qwen3.',
   };

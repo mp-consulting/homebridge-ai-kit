@@ -13,13 +13,17 @@ export const PLUGIN_NAME = '@mp-consulting/homebridge-ai-kit';
 export const PROVIDER_NAMES = ['anthropic', 'openai', 'gemini', 'openai-compatible'] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
-/** Claude `output_config.effort` levels: how much the model thinks and spends per answer. */
+/** Effort levels: Claude `output_config.effort`, OpenAI `reasoning.effort` — how much the model thinks and spends per answer. */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
+/** OpenAI APIs: the Responses API (`/responses`) or Chat Completions (`/chat/completions`, for servers that only speak it). */
+export const OPENAI_APIS = ['responses', 'chat'] as const;
+export type OpenAiApi = (typeof OPENAI_APIS)[number];
+
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: 'claude-sonnet-5-5',
-  openai: 'gpt-5',
+  openai: 'gpt-6.1-sol',
   gemini: 'gemini-3.8-flash',
   'openai-compatible': 'llama3.1',
 };
@@ -87,8 +91,14 @@ export interface AiConfig {
   maxOutputTokens: number;
   /** Overrides the provider's context window, e.g. for a local model. */
   contextTokens?: number;
-  /** Claude only: `output_config.effort`. Unset leaves the model's default (`high`; `medium` on Claude Opus 5.5). Not supported by Claude Haiku 4.5. */
+  /**
+   * How much the model thinks: Claude `output_config.effort`, OpenAI `reasoning.effort` (`reasoning_effort` on
+   * Chat Completions). Unset leaves the model's default. Not supported by Claude Haiku 4.5; older OpenAI models
+   * (e.g. `gpt-5`) know only `low` to `high`.
+   */
   effort?: EffortLevel;
+  /** `openai` / `openai-compatible`: which API to call; default `responses` for `openai`, `chat` for `openai-compatible`. */
+  openaiApi?: OpenAiApi;
   /** Retries of a failed provider request (network error, 408, 429, 5xx); default 2, 0 disables. */
   maxRetries?: number;
   mcp: { http: McpHttpConfig };
@@ -183,8 +193,13 @@ export function resolveAiConfig(block: unknown = {}): AiConfig {
   if (effort !== undefined && !(EFFORT_LEVELS as readonly string[]).includes(effort)) {
     throw new Error(`Unknown effort "${effort}". Use one of: ${EFFORT_LEVELS.join(', ')}`);
   }
+  const openaiApi = str(b.openaiApi);
+  if (openaiApi !== undefined && !(OPENAI_APIS as readonly string[]).includes(openaiApi)) {
+    throw new Error(`Unknown openaiApi "${openaiApi}". Use one of: ${OPENAI_APIS.join(', ')}`);
+  }
   const optional: Array<[keyof AiConfig, string | number | undefined]> = [
     ['effort', effort],
+    ['openaiApi', openaiApi],
     ['apiKey', str(b.apiKey)],
     ['baseUrl', str(b.baseUrl)?.replace(/\/+$/, '')],
     ['contextTokens', positiveInt(b.contextTokens, 'contextTokens')],

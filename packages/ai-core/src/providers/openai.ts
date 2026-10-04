@@ -1,9 +1,11 @@
 /**
- * OpenAI Chat Completions (`POST /chat/completions`), plain fetch. Also serves
- * any OpenAI-compatible server (Ollama, LM Studio, vLLM) via `baseUrl`.
+ * OpenAI over plain fetch: the Responses API (`POST /responses`, the default for
+ * OpenAI, which newer models need for tool calling) or Chat Completions
+ * (`POST /chat/completions`, the default for OpenAI-compatible servers such as
+ * Ollama, LM Studio and vLLM, set with `baseUrl`).
  */
 
-import type { AiConfig } from '../core/config.js';
+import type { AiConfig, EffortLevel, OpenAiApi } from '../core/config.js';
 import { DEFAULT_BASE_URLS, DEFAULT_MAX_OUTPUT_TOKENS } from '../core/config.js';
 import { parseArguments, parseEvent, partsOf, postJson, readSse } from './http.js';
 import type {
@@ -101,8 +103,151 @@ function buildResult(model: string, text: string, toolCalls: ToolCall[], finish:
   };
 }
 
-export interface OpenAiProviderOptions extends Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'>, ProviderRetryOptions {
+// ── Responses API ──
+
+/** A Responses API output item; input items are the same shapes (plus `function_call_output`). */
+interface OutputItem {
+  type: string;
+  id?: string;
+  role?: string;
+  content?: Array<{ type: string; text?: string; refusal?: string }>;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  [key: string]: unknown;
+}
+
+type InputItem =
+  | { role: 'user' | 'assistant'; content: string }
+  | { type: 'function_call'; call_id: string; name: string; arguments: string }
+  | { type: 'function_call_output'; call_id: string; output: string }
+  | OutputItem;
+
+interface ResponsesUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  /** OpenAI's automatic prompt caching: the cached part of `input_tokens`. */
+  input_tokens_details?: { cached_tokens?: number } | null;
+}
+
+interface ResponseObject {
+  model?: string;
+  status?: string;
+  output?: OutputItem[];
+  usage?: ResponsesUsage | null;
+  incomplete_details?: { reason?: string } | null;
+  error?: { message?: string; code?: string } | null;
+}
+
+interface StreamEvent {
+  type?: string;
+  delta?: string;
+  arguments?: string;
+  output_index?: number;
+  item?: OutputItem;
+  response?: ResponseObject;
+  message?: string;
+  error?: { message?: string } | null;
+}
+
+/**
+ * The conversation as Responses API input items. An assistant turn this provider
+ * produced is replayed verbatim (its reasoning items carry the encrypted
+ * reasoning that `store: false` needs to continue a tool loop).
+ */
+export function toResponsesInput(messages: ChatMessage[], provider: OpenAiName = 'openai'): InputItem[] {
+  const out: InputItem[] = [];
+  for (const m of messages) {
+    if (m.role === 'assistant' && m.providerContent?.provider === provider && Array.isArray(m.providerContent.content)) {
+      out.push(...(m.providerContent.content as OutputItem[]));
+      continue;
+    }
+    const parts = partsOf(m);
+    const text = parts
+      .filter((p): p is Extract<ContentPart, { type: 'text' }> => p.type === 'text')
+      .map((p) => p.text)
+      .join('');
+    if (m.role === 'assistant') {
+      if (text) {
+        out.push({ role: 'assistant', content: text });
+      }
+      for (const p of parts) {
+        if (p.type === 'tool_call') {
+          out.push({ type: 'function_call', call_id: p.id, name: p.name, arguments: JSON.stringify(p.arguments) });
+        }
+      }
+      continue;
+    }
+    for (const p of parts) {
+      if (p.type === 'tool_result') {
+        out.push({ type: 'function_call_output', call_id: p.toolCallId, output: p.isError ? `Error: ${p.content}` : p.content });
+      }
+    }
+    if (text) {
+      out.push({ role: 'user', content: text });
+    }
+  }
+  return out;
+}
+
+const INCOMPLETE_REASONS: Record<string, StopReason> = {
+  max_output_tokens: 'max_tokens',
+  content_filter: 'refusal',
+};
+
+function fromResponse(provider: OpenAiName, fallbackModel: string, response: ResponseObject): ChatResult {
+  const output = response.output ?? [];
+  let text = '';
+  let refusal = '';
+  const toolCalls: ToolCall[] = [];
+  output.forEach((item, i) => {
+    if (item.type === 'message') {
+      for (const part of item.content ?? []) {
+        if (part.type === 'output_text') {
+          text += part.text ?? '';
+        } else if (part.type === 'refusal') {
+          refusal += part.refusal ?? '';
+        }
+      }
+    } else if (item.type === 'function_call') {
+      toolCalls.push({ id: item.call_id ?? item.id ?? `call_${i}`, name: item.name ?? '', arguments: parseArguments(provider, item.arguments) });
+    }
+  });
+  let stopReason: StopReason;
+  if (toolCalls.length > 0) {
+    stopReason = 'tool_calls';
+  } else if (response.status === 'incomplete') {
+    stopReason = INCOMPLETE_REASONS[response.incomplete_details?.reason ?? ''] ?? 'other';
+  } else if (refusal && !text) {
+    stopReason = 'refusal';
+  } else {
+    stopReason = response.status === 'completed' ? 'end' : 'other';
+  }
+  text ||= refusal;
+  const usage = response.usage ?? undefined;
+  return {
+    text,
+    toolCalls,
+    usage: {
+      inputTokens: usage?.input_tokens ?? 0,
+      outputTokens: usage?.output_tokens ?? 0,
+      ...(usage?.input_tokens_details?.cached_tokens !== undefined ? { cacheReadTokens: usage.input_tokens_details.cached_tokens } : {}),
+    },
+    stopReason,
+    model: response.model ?? fallbackModel,
+    message: {
+      role: 'assistant',
+      content: [...(text ? [{ type: 'text' as const, text }] : []), ...toolCalls.map((c) => ({ type: 'tool_call' as const, ...c }))],
+      providerContent: { provider, content: output },
+    },
+  };
+}
+
+export interface OpenAiProviderOptions
+  extends Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens' | 'effort'>, ProviderRetryOptions {
   name?: OpenAiName;
+  /** `responses` (default for `openai`) or `chat` (default for `openai-compatible`, for servers that only speak Chat Completions). */
+  api?: OpenAiApi;
   capabilities?: Partial<ProviderCapabilities>;
 }
 
@@ -110,9 +255,12 @@ export class OpenAiProvider implements AiProvider {
   readonly name: OpenAiName;
   readonly model: string;
   readonly capabilities: ProviderCapabilities;
+  /** The API this provider calls. */
+  readonly api: OpenAiApi;
   private readonly url: string;
   private readonly apiKey?: string;
   private readonly maxOutputTokens: number;
+  private readonly effort?: EffortLevel;
   private readonly retry: RetryOptions;
 
   constructor(options: OpenAiProviderOptions) {
@@ -122,8 +270,10 @@ export class OpenAiProvider implements AiProvider {
     }
     this.model = options.model;
     this.apiKey = options.apiKey;
-    this.url = `${options.baseUrl ?? DEFAULT_BASE_URLS[this.name]}/chat/completions`;
+    this.api = options.api ?? (this.name === 'openai' ? 'responses' : 'chat');
+    this.url = `${options.baseUrl ?? DEFAULT_BASE_URLS[this.name]}/${this.api === 'responses' ? 'responses' : 'chat/completions'}`;
     this.maxOutputTokens = options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
+    this.effort = options.effort;
     this.retry = retryOptions(options);
     this.capabilities = {
       tools: true,
@@ -135,22 +285,144 @@ export class OpenAiProvider implements AiProvider {
   }
 
   private post(req: ChatRequest, stream: boolean): Promise<Response> {
+    const body = this.api === 'responses' ? this.responsesBody(req, stream) : this.chatBody(req, stream);
+    return postJson(this.name, this.url, this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}, body, req.signal, this.retry);
+  }
+
+  private tools(req: ChatRequest) {
+    return this.capabilities.tools && req.tools?.length ? req.tools : undefined;
+  }
+
+  private responsesBody(req: ChatRequest, stream: boolean): Record<string, unknown> {
+    const tools = this.tools(req);
+    const effort = req.effort ?? this.effort;
+    return {
+      model: this.model,
+      ...(req.system ? { instructions: req.system } : {}),
+      input: toResponsesInput(req.messages, this.name),
+      max_output_tokens: req.maxOutputTokens ?? this.maxOutputTokens,
+      // Nothing is kept on OpenAI's side; each request carries the whole conversation.
+      store: false,
+      // Reasoning models: get the reasoning back encrypted so a tool loop can replay it without `store`.
+      ...(this.name === 'openai' ? { include: ['reasoning.encrypted_content'] } : {}),
+      ...(effort ? { reasoning: { effort } } : {}),
+      ...(tools ? { tools: tools.map((t) => ({ type: 'function', name: t.name, description: t.description ?? '', parameters: t.inputSchema })) } : {}),
+      ...(stream ? { stream: true } : {}),
+    };
+  }
+
+  private chatBody(req: ChatRequest, stream: boolean): Record<string, unknown> {
     const maxTokens = req.maxOutputTokens ?? this.maxOutputTokens;
-    const tools = this.capabilities.tools && req.tools?.length ? req.tools : undefined;
-    const body = {
+    const tools = this.tools(req);
+    const effort = req.effort ?? this.effort;
+    return {
       model: this.model,
       messages: toOpenAiMessages(req.system, req.messages),
       // OpenAI deprecated max_tokens for newer models; compatible servers mostly only know max_tokens.
       ...(this.name === 'openai' ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+      ...(this.name === 'openai' && effort ? { reasoning_effort: effort } : {}),
       ...(tools
         ? { tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description ?? '', parameters: t.inputSchema } })) }
         : {}),
       ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
     };
-    return postJson(this.name, this.url, this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}, body, req.signal, this.retry);
   }
 
   async chat(req: ChatRequest): Promise<ChatResult> {
+    return this.api === 'responses' ? this.chatResponses(req) : this.chatCompletions(req);
+  }
+
+  stream(req: ChatRequest): AsyncGenerator<ChatChunk> {
+    return this.api === 'responses' ? this.streamResponses(req) : this.streamCompletions(req);
+  }
+
+  private failure(response: ResponseObject | undefined, fallback: string): ProviderError {
+    return new ProviderError(this.name, response?.error?.message ?? fallback);
+  }
+
+  private async chatResponses(req: ChatRequest): Promise<ChatResult> {
+    const res = await this.post(req, false);
+    const data = (await res.json()) as ResponseObject;
+    if (data.status === 'failed' || data.error) {
+      throw this.failure(data, 'response failed');
+    }
+    if (!Array.isArray(data.output)) {
+      throw new ProviderError(this.name, 'response has no output');
+    }
+    return fromResponse(this.name, this.model, data);
+  }
+
+  private async *streamResponses(req: ChatRequest): AsyncGenerator<ChatChunk> {
+    const res = await this.post(req, true);
+    let text = '';
+    let model = this.model;
+    let final: ResponseObject | undefined;
+    const calls = new Map<number, OutputItem>();
+
+    for await (const ev of readSse(res)) {
+      if (ev.data === '[DONE]') {
+        break;
+      }
+      const data = parseEvent<StreamEvent>(this.name, ev.data);
+      const index = data.output_index ?? -1;
+      switch (data.type) {
+        case 'response.created':
+        case 'response.in_progress':
+          model = data.response?.model ?? model;
+          break;
+        case 'response.output_text.delta':
+          if (data.delta) {
+            text += data.delta;
+            yield { type: 'text', delta: data.delta };
+          }
+          break;
+        case 'response.output_item.added':
+        case 'response.output_item.done':
+          if (data.item?.type === 'function_call') {
+            calls.set(index, { arguments: '', ...calls.get(index), ...data.item });
+          }
+          break;
+        case 'response.function_call_arguments.delta': {
+          const call = calls.get(index);
+          if (call) {
+            call.arguments = (call.arguments ?? '') + (data.delta ?? '');
+          }
+          break;
+        }
+        case 'response.function_call_arguments.done': {
+          const call = calls.get(index);
+          if (call && data.arguments !== undefined) {
+            call.arguments = data.arguments;
+          }
+          break;
+        }
+        case 'response.completed':
+        case 'response.incomplete':
+          final = data.response;
+          break;
+        case 'response.failed':
+          throw this.failure(data.response, 'response failed');
+        case 'error':
+          throw new ProviderError(this.name, data.message ?? data.error?.message ?? 'stream error');
+      }
+    }
+
+    // A stream cut short of `response.completed` still yields what arrived.
+    const arrived: OutputItem[] = [
+      ...(text ? [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] : []),
+      ...[...calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call),
+    ];
+    const response: ResponseObject = final?.output ? final : { ...final, model, output: arrived };
+    const result = fromResponse(this.name, model, response);
+    for (const call of result.toolCalls) {
+      yield { type: 'tool_call', ...call };
+    }
+    yield { type: 'done', usage: result.usage, stopReason: result.stopReason, result };
+  }
+
+  // ── Chat Completions ──
+
+  private async chatCompletions(req: ChatRequest): Promise<ChatResult> {
     const res = await this.post(req, false);
     const data = (await res.json()) as { choices?: Array<{ message?: ApiMessage; finish_reason?: string }>; usage?: ApiUsage; model?: string };
     const choice = data.choices?.[0];
@@ -165,7 +437,7 @@ export class OpenAiProvider implements AiProvider {
     return buildResult(data.model ?? this.model, choice.message.content ?? '', toolCalls, choice.finish_reason, data.usage);
   }
 
-  async *stream(req: ChatRequest): AsyncGenerator<ChatChunk> {
+  private async *streamCompletions(req: ChatRequest): AsyncGenerator<ChatChunk> {
     const res = await this.post(req, true);
     let text = '';
     let finish: string | undefined;

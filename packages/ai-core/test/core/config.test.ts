@@ -89,6 +89,9 @@ describe('resolveAiConfig', () => {
     expect(() => resolveAiConfig({ effort: 'extreme' })).toThrow('Unknown effort "extreme"');
     expect(resolveAiConfig({ effort: ' xhigh ' }).effort).toBe('xhigh');
     expect(resolveAiConfig({ effort: '' }).effort).toBeUndefined();
+    expect(() => resolveAiConfig({ openaiApi: 'assistants' })).toThrow('Unknown openaiApi "assistants". Use one of: responses, chat');
+    expect(resolveAiConfig({ provider: 'openai', openaiApi: 'chat' }).openaiApi).toBe('chat');
+    expect(resolveAiConfig({ provider: 'openai' }).openaiApi).toBeUndefined();
     expect(() => resolveAiConfig({ maxRetries: -1 })).toThrow('maxRetries must be a non-negative integer');
     expect(() => resolveAiConfig({ maxRetries: 1.5 })).toThrow('maxRetries');
     expect(resolveAiConfig({ maxRetries: null }).maxRetries).toBeUndefined();

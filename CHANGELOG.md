@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OpenAI through the Responses API** (from ai-core): the `openai` provider calls `/responses` with `store: false`, which newer OpenAI models need for tool calling, and replays their encrypted reasoning in agent loops. The new `openaiApi` setting (`responses` | `chat`, in `config.schema.json`) switches back to Chat Completions for proxies or local servers that only speak it (`openai-compatible` keeps Chat Completions by default). The `effort` setting now also applies to OpenAI (`reasoning.effort`).
 - **Assistant requests are retried** when the provider is busy, rate limits them or can't be reached (from ai-core): new `maxRetries` setting (default 2, 0 turns it off) in `config.schema.json` and the README.
 - **Claude prompt caching and `effort`** (from ai-core): agent loops reuse the cached tools, system prompt and conversation, and the new `effort` setting (`config.schema.json`, Claude only) controls how much Claude thinks. Costs now price cache reads and writes correctly.
 - Usage tracking that survives restarts, with daily / monthly totals and optional token or USD budgets (`UsageTracker`, `JsonFileUsageStore`, `trackUsage`, from ai-core).
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The default OpenAI model is `gpt-6.1-sol`** (was `gpt-5`, whose snapshot OpenAI shuts down on 2026-12-11), in ai-core, the settings page, `config.schema.json` and the README.
 - **The default Gemini model is `gemini-3.8-flash`** (was `gemini-2.5-pro`, which Google now limits to projects that already used it), in ai-core, the settings page and `config.schema.json`.
 - `update_config` no longer echoes the Homebridge UI's answer, which is the saved file with its secrets; it returns a short confirmation instead.
 - **HTTP sessions expire.** A session with no request for 30 minutes is closed (`sessionIdleMs`, `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES`), and at most 32 stay open (`maxSessions`, `HOMEBRIDGE_AI_MCP_MAX_SESSIONS`); the least recently used idle session makes room for a new one. Sessions with an open stream are never idle.

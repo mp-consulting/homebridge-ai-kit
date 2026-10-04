@@ -35,7 +35,7 @@
         "title": "Model",
         "type": "string",
         "placeholder": "claude-sonnet-5-5",
-        "description": "Leave empty for the provider's default: claude-sonnet-5-5, gpt-5, gemini-3.8-flash, or llama3.1 for a local server."
+        "description": "Leave empty for the provider's default: claude-sonnet-5-5, gpt-6.1-sol, gemini-3.8-flash, or llama3.1 for a local server."
       },
       "apiKey": {
         "title": "API key",
@@ -72,10 +72,22 @@
         "minimum": 64,
         "default": 2048
       },
-      "effort": {
-        "title": "Effort (Claude)",
+      "openaiApi": {
+        "title": "API",
         "type": "string",
-        "description": "How much Claude thinks before answering. Higher is more thorough but slower and uses more tokens. Leave empty for the model's default. Not supported by Claude Haiku 4.5.",
+        "description": "Which OpenAI API to call. The Responses API is the default for OpenAI (newer models need it for tool calling); most local servers only speak Chat Completions.",
+        "oneOf": [
+          { "title": "Responses API", "enum": ["responses"] },
+          { "title": "Chat Completions", "enum": ["chat"] }
+        ],
+        "condition": {
+          "functionBody": "return model.provider === 'openai' || model.provider === 'openai-compatible';"
+        }
+      },
+      "effort": {
+        "title": "Effort (Claude, OpenAI)",
+        "type": "string",
+        "description": "How much the model thinks before answering. Higher is more thorough but slower and uses more tokens. Leave empty for the model's default. Not supported by Claude Haiku 4.5; older OpenAI models such as gpt-5 accept only Low to High.",
         "oneOf": [
           { "title": "Low", "enum": ["low"] },
           { "title": "Medium", "enum": ["medium"] },
@@ -84,7 +96,7 @@
           { "title": "Max", "enum": ["max"] }
         ],
         "condition": {
-          "functionBody": "return model.provider === 'anthropic';"
+          "functionBody": "return model.provider === 'anthropic' || model.provider === 'openai';"
         }
       },
       "maxRetries": {

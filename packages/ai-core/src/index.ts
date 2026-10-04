@@ -20,6 +20,7 @@ export {
   DEFAULT_MCP_HTTP_PORT,
   DEFAULT_MODELS,
   EFFORT_LEVELS,
+  OPENAI_APIS,
   PLATFORM_NAME,
   PLUGIN_NAME,
   PROVIDER_NAMES,
@@ -28,7 +29,7 @@ export {
   readAiConfig,
   resolveAiConfig,
 } from './core/config.js';
-export type { AiConfig, EffortLevel, McpClientConfig, McpHttpConfig, McpScope, ProviderName } from './core/config.js';
+export type { AiConfig, EffortLevel, McpClientConfig, McpHttpConfig, McpScope, OpenAiApi, ProviderName } from './core/config.js';
 
 // ── Providers ──
 export {
@@ -51,6 +52,7 @@ export type {
   ChatRequest,
   ChatResult,
   ContentPart,
+  OpenAiProviderOptions,
   ProviderCapabilities,
   ProviderRetryOptions,
   RetryOptions,

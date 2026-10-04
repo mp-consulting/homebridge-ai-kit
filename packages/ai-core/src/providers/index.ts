@@ -11,6 +11,7 @@ export { AnthropicProvider } from './anthropic.js';
 export type { AnthropicProviderOptions } from './anthropic.js';
 export { GeminiProvider } from './gemini.js';
 export { OpenAiProvider } from './openai.js';
+export type { OpenAiProviderOptions } from './openai.js';
 
 /** Builds the provider adapter an {@link AiConfig} selects. */
 export function createProvider(config: AiConfig): AiProvider {
@@ -18,11 +19,11 @@ export function createProvider(config: AiConfig): AiProvider {
     case 'anthropic':
       return new AnthropicProvider(config);
     case 'openai':
-      return new OpenAiProvider({ ...config, name: 'openai' });
+      return new OpenAiProvider({ ...config, name: 'openai', api: config.openaiApi });
     case 'gemini':
       return new GeminiProvider(config);
     case 'openai-compatible':
-      return new OpenAiProvider({ ...config, name: 'openai-compatible' });
+      return new OpenAiProvider({ ...config, name: 'openai-compatible', api: config.openaiApi });
     default:
       throw new Error(`Unknown AI provider "${(config as { provider: unknown }).provider}"`);
   }
