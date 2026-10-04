@@ -49,7 +49,26 @@ describe('generateJson', () => {
     expect(requests[1].messages[1]).toEqual({ role: 'assistant', content: '(empty reply)' });
   });
 
-  it('reports a missing required key', async () => {
+  it('does not retry a reply cut off at the output limit', async () => {
+    const { provider, requests } = fakeProvider([{ text: '{"risk":"lo', stopReason: 'max_tokens' }]);
+    const error = await generateJson({ provider, schema, prompt: 'p', maxOutputTokens: 2048 }).catch((e) => e);
+    expect(error).toBeInstanceOf(JsonGenerationError);
+    expect(error.message).toBe('The answer was cut off at the 2048-token output limit. Raise the maximum answer length, or ask for less at once.');
+    expect(error.text).toBe('{"risk":"lo');
+    expect(requests).toHaveLength(1);
+  });
+
+  it('names the provider limit when no maximum was given', async () => {
+    const { provider } = fakeProvider([{ text: '{', stopReason: 'max_tokens' }]);
+    await expect(generateJson({ provider, schema, prompt: 'p' })).rejects.toThrow('cut off at its output limit');
+  });
+
+  it('accepts valid JSON even when the reply stopped at the limit', async () => {
+    const { provider } = fakeProvider([{ text: '{"risk":"low"}', stopReason: 'max_tokens' }]);
+    await expect(generateJson({ provider, schema, prompt: 'p' })).resolves.toMatchObject({ data: { risk: 'low' } });
+  });
+
+    it('reports a missing required key', async () => {
     const { provider } = fakeProvider([{ text: '[]' }, { text: '{}' }]);
     await expect(generateJson({ provider, schema, prompt: 'p' })).rejects.toThrow("(root) must have required property 'risk'");
   });
