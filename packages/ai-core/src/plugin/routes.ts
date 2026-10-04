@@ -63,23 +63,48 @@ export function registerAiRoutes(server: PluginUiServer, options: AiRoutesOption
     return makeProvider(config);
   };
 
+  /** Requests in flight by requestId, so `/ai/cancel` can stop the provider call. */
+  const inFlight = new Map<string, AbortController>();
+
   /** Runs `fn`, streaming text as `ai:chunk` events when the body carries a requestId. */
-  const streamed = async <T>(body: Streamable, fn: (onChunk?: (delta: string) => void) => Promise<T>): Promise<T> => {
+  const streamed = async <T>(body: Streamable, fn: (onChunk: ((delta: string) => void) | undefined, signal: AbortSignal) => Promise<T>): Promise<T> => {
     const requestId = typeof body?.requestId === 'string' ? body.requestId : undefined;
-    const onChunk = requestId ? (delta: string) => server.pushEvent('ai:chunk', { requestId, delta }) : undefined;
+    const controller = new AbortController();
+    if (requestId) {
+      inFlight.set(requestId, controller);
+    }
+    const onChunk = requestId
+      ? (delta: string) => {
+          if (!controller.signal.aborted) {
+            server.pushEvent('ai:chunk', { requestId, delta });
+          }
+        }
+      : undefined;
     try {
-      const result = await fn(onChunk);
+      const result = await fn(onChunk, controller.signal);
       if (requestId) {
         server.pushEvent('ai:done', { requestId });
       }
       return result;
     } catch (error) {
-      if (requestId) {
+      if (requestId && !controller.signal.aborted) {
         server.pushEvent('ai:error', { requestId, message: (error as Error).message });
       }
       throw error;
+    } finally {
+      if (requestId) {
+        inFlight.delete(requestId);
+      }
     }
   };
+
+  // ui-kit's MpKit.ai sends this when a request is cancelled; unknown or finished ids are a no-op.
+  server.onRequest('/ai/cancel', (body) => {
+    const requestId = typeof body?.requestId === 'string' ? body.requestId : undefined;
+    const controller = requestId ? inFlight.get(requestId) : undefined;
+    controller?.abort(new Error('The Assistant request was cancelled'));
+    return { cancelled: controller !== undefined };
+  });
 
   server.onRequest('/ai/status', async () => {
     const config = await loadConfig();
@@ -98,7 +123,7 @@ export function registerAiRoutes(server: PluginUiServer, options: AiRoutesOption
   });
 
   server.onRequest('/ai/explain', (body) =>
-    streamed(body, async (onChunk) => {
+    streamed(body, async (onChunk, signal) => {
       const error = requireString(body, 'error');
       const { text, usage } = await explainDeviceError({
         provider: await provider(),
@@ -108,13 +133,14 @@ export function registerAiRoutes(server: PluginUiServer, options: AiRoutesOption
         pluginName: options.pluginName,
         systemContext,
         onChunk,
+        signal,
       });
       return { text, usage };
     }),
   );
 
   server.onRequest('/ai/ask', (body) =>
-    streamed(body, async (onChunk) => {
+    streamed(body, async (onChunk, signal) => {
       const prompt = requireString(body, 'prompt');
       const { text, usage } = await ask({
         provider: await provider(),
@@ -122,13 +148,14 @@ export function registerAiRoutes(server: PluginUiServer, options: AiRoutesOption
         context: typeof body.context === 'string' ? body.context : undefined,
         systemContext,
         onChunk,
+        signal,
       });
       return { text, usage };
     }),
   );
 
   server.onRequest('/ai/config', (body) =>
-    streamed(body, async (onChunk) => {
+    streamed(body, async (onChunk, signal) => {
       const request = requireString(body, 'request');
       const { schema, current } = body;
       if (!isObject(schema)) {
@@ -142,6 +169,7 @@ export function registerAiRoutes(server: PluginUiServer, options: AiRoutesOption
         pluginName: options.pluginName,
         systemContext,
         onChunk,
+        signal,
       });
     }),
   );
