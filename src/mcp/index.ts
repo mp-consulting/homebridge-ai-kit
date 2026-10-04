@@ -1,4 +1,11 @@
 export { VERSION, createServer, envFlag } from './create-server.js';
 export type { ServerOptions } from './create-server.js';
 export { HomebridgeClient } from './homebridge-client.js';
-export { runStdioServer } from './stdio.js';
+export type { HomebridgeClientOptions, LogTail } from './homebridge-client.js';
+export { runHttpFromEnv, runStdioServer } from './stdio.js';
+export { MCP_PATH, runHttpServer } from './http.js';
+export type { HttpServerOptions, RunningHttpServer } from './http.js';
+export { LIVE_TOPICS, createLiveSource } from './live.js';
+export type { LiveOptions, LiveSource, LiveTopic, LiveWatch } from './live.js';
+export { RESOURCE_URIS } from './resources.js';
+export type { Accessory, CharacteristicInfo, ChildBridge, PluginJob, Room } from './types.js';

@@ -37,6 +37,13 @@ const CLIENT_METHODS = [
   'getPluginChangelog',
   'getSystemInfo',
   'getLogTail',
+  'installPlugin',
+  'updatePlugin',
+  'uninstallPlugin',
+  'getPluginJob',
+  'getChildBridges',
+  'controlChildBridge',
+  'accessToken',
 ] as const satisfies ReadonlyArray<keyof HomebridgeClient>;
 
 /** A HomebridgeClient whose every method is a `vi.fn()`, with optional overrides. */
@@ -45,7 +52,7 @@ export function mockClient(overrides: Partial<Record<(typeof CLIENT_METHODS)[num
   for (const method of CLIENT_METHODS) {
     client[method] = vi.fn();
   }
-  return { ...client, ...overrides } as unknown as HomebridgeClient;
+  return { url: 'http://hb.local:8581', ...client, ...overrides } as unknown as HomebridgeClient;
 }
 
 /**

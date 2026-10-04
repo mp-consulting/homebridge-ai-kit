@@ -9,6 +9,12 @@ import { register as registerConfig } from './tools/config.js';
 import { register as registerPlugins } from './tools/plugins.js';
 import { register as registerSystem } from './tools/system.js';
 import { register as registerLogs } from './tools/logs.js';
+import { register as registerPluginJobs } from './tools/plugin-jobs.js';
+import { register as registerChildBridges } from './tools/child-bridges.js';
+import { registerResources } from './resources.js';
+import { registerPrompts } from './prompts.js';
+import type { LiveSource } from './live.js';
+import { createLiveSource } from './live.js';
 
 // package.json sits two levels above both src/mcp/ and dist/mcp/, and ships in the npm tarball.
 const { version } = createRequire(import.meta.url)('../../package.json') as { version: string };
@@ -22,11 +28,18 @@ const TOOL_GROUPS: RegisterTools[] = [
   registerPlugins,
   registerSystem,
   registerLogs,
+  registerPluginJobs,
+  registerChildBridges,
 ];
 
 export interface ServerOptions {
   /** Register only tools annotated `readOnlyHint: true`. */
   readOnly?: boolean;
+  /**
+   * Change feed behind `resources/subscribe`. Default: socket.io with polling
+   * fallback ({@link createLiveSource}); `false` disables subscriptions.
+   */
+  live?: LiveSource | false;
 }
 
 export function createServer(client: HomebridgeClient, options: ServerOptions = {}): McpServer {
@@ -35,6 +48,8 @@ export function createServer(client: HomebridgeClient, options: ServerOptions = 
   for (const register of TOOL_GROUPS) {
     register(tool, client);
   }
+  registerResources(server, client, options.live ?? createLiveSource(client));
+  registerPrompts(server);
   return server;
 }
 
