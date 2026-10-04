@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   // Ignores
   {
-    ignores: ['dist/**', 'node_modules/**', 'tmp/**', 'coverage/**', 'homebridge-ui/public/lib/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', 'tmp/**', '**/coverage/**', 'homebridge-ui/public/lib/**'],
   },
   // Base recommended configs
   eslint.configs.recommended,
@@ -56,7 +56,7 @@ export default tseslint.config(
   },
   // Test files — relaxed rules
   {
-    files: ['src/**/*.{test,spec}.ts', 'test/**/*.{test,spec}.ts', 'tests/**/*.{test,spec}.ts', 'src/__tests__/**/*.ts'],
+    files: ['**/src/**/*.{test,spec}.ts', '**/test/**/*.{test,spec}.ts', '**/tests/**/*.{test,spec}.ts', '**/src/__tests__/**/*.ts'],
     rules: {
       '@typescript-eslint/no-use-before-define': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

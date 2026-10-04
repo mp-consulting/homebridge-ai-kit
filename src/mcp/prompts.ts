@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { PROMPTS } from '../core/prompts.js';
+import { PROMPTS } from '@mp-consulting/homebridge-ai-core';
 
 function message(text: string) {
   return { messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] };

@@ -2,7 +2,7 @@
   "name": "@mp-consulting/homebridge-ai-kit",
   "displayName": "Homebridge AI Kit",
   "version": "2.0.0",
-  "description": "AI toolkit for Homebridge \u2014 an MCP server that lets AI assistants control accessories, manage plugins and monitor Homebridge, plus the shared AI building blocks used by Homebridge Glass UI and MP Consulting plugins.",
+  "description": "AI toolkit for Homebridge — an MCP server that lets AI assistants control accessories, manage plugins and monitor Homebridge, plus the shared AI building blocks used by Homebridge Glass UI and MP Consulting plugins.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,13 +26,14 @@
     "homebridge-mcp-server": "dist/bin/homebridge-mcp-server.js"
   },
   "scripts": {
-    "build": "npm run copy:ui-assets && tsc",
+    "build": "npm run build:core && npm run copy:ui-assets && tsc",
+    "build:core": "npm run build -w packages/ai-core",
     "dev": "tsx src/bin/homebridge-ai-kit.ts mcp",
-    "test": "vitest run",
+    "test": "npm test -w packages/ai-core && vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "npm run test:coverage -w packages/ai-core && vitest run --coverage",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc -p tsconfig.test.json",
+    "typecheck": "npm run typecheck -w packages/ai-core && npm run build:core && tsc -p tsconfig.test.json",
     "prepublishOnly": "npm run build",
     "copy:ui-assets": "mp-ui-kit-copy --vendor"
   },
@@ -63,10 +64,13 @@
     "config.schema.json",
     "homebridge-ui"
   ],
+  "workspaces": [
+    "packages/*"
+  ],
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.2.6",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "ajv": "^8.20.0",
+    "@mp-consulting/homebridge-ai-core": "^2.0.0",
     "socket.io-client": "^4.8.4",
     "zod": "^4.5.4"
   },

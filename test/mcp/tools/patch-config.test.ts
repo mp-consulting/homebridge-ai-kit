@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mergePatch, register } from '../../../src/mcp/tools/config.js';
-import { REDACTED } from '../../../src/core/redaction.js';
+import { REDACTED } from '@mp-consulting/homebridge-ai-core';
 import { collectHandlers, mockClient } from '../helpers.js';
 
 const config = () => ({

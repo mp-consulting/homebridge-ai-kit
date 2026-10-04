@@ -4,12 +4,11 @@
  * outside clients (Claude Desktop, Claude Code, Cursor) can reach Homebridge.
  */
 
-import type { AiConfig } from '../core/config.js';
-import { DEFAULT_HOMEBRIDGE_URL, resolveAiConfig } from '../core/config.js';
+import type { AiConfig } from '@mp-consulting/homebridge-ai-core';
+import { DEFAULT_HOMEBRIDGE_URL, createProvider, resolveAiConfig } from '@mp-consulting/homebridge-ai-core';
 import { HomebridgeClient } from '../mcp/homebridge-client.js';
 import type { RunningHttpServer } from '../mcp/http.js';
 import { runHttpServer } from '../mcp/http.js';
-import { createProvider } from '../providers/index.js';
 
 /** The slice of Homebridge's logger, config and API the platform needs (no runtime dependency on homebridge). */
 export interface PlatformLogger {

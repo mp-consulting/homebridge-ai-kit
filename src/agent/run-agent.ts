@@ -8,10 +8,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { createServer, VERSION } from '../mcp/create-server.js';
 import type { HomebridgeClient } from '../mcp/homebridge-client.js';
-import { complete } from '../providers/index.js';
-import type { AiProvider, ChatMessage, ChatResult, ContentPart, TokenUsage, ToolCall, ToolDefinition } from '../providers/types.js';
-import { addUsage } from '../core/usage.js';
-import { PROMPTS } from '../core/prompts.js';
+import { PROMPTS, addUsage, complete } from '@mp-consulting/homebridge-ai-core';
+import type { AiProvider, ChatMessage, ChatResult, ContentPart, TokenUsage, ToolCall, ToolDefinition } from '@mp-consulting/homebridge-ai-core';
 
 export type AgentEvent =
   | { type: 'text'; delta: string }

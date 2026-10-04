@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { isDestructive, runAgent, toToolDefinition } from '../../src/agent/run-agent.js';
 import type { AgentEvent } from '../../src/agent/run-agent.js';
 import { mockClient } from '../mcp/helpers.js';
-import { fakeProvider } from '../providers/helpers.js';
+import { fakeProvider } from '../../packages/ai-core/test/providers/helpers.js';
 
 const lamp = { uniqueId: 'lamp', serviceName: 'Lamp', type: 'Lightbulb', values: { On: false } };
 
