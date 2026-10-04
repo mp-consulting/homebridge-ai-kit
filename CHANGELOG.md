@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-10-04
 
 ### Added
 
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Depends on `@mp-consulting/homebridge-ai-core` ^2.1.0, which reads the new certificate settings.
 - **Saving the plugin's settings dropped fields Glass UI writes.** `config.schema.json` now declares `mcp.http.homebridgeTokenId` (the id of the API token Glass UI created for the MCP server, which it needs to revoke that token) and the new certificate settings, so the Homebridge UI keeps them; a test checks that every field the code reads is in the schema. The custom settings page now merges its form into the stored `mcp` / `mcp.http` blocks instead of replacing them, so fields it doesn't show survive a save.
 - When the HTTP MCP server can't start, the plugin only suggests setting a Homebridge API token when credentials are what's missing.
 
