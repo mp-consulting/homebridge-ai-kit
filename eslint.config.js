@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   // Ignores
   {
-    ignores: ['dist/**', 'node_modules/**', 'tmp/**'],
+    ignores: ['dist/**', 'node_modules/**', 'tmp/**', 'coverage/**', 'homebridge-ui/public/lib/**'],
   },
   // Base recommended configs
   eslint.configs.recommended,
@@ -44,6 +44,14 @@ export default tseslint.config(
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
+    },
+  },
+  // Custom settings UI: plain browser / Node JavaScript
+  {
+    files: ['homebridge-ui/public/**/*.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: { window: 'readonly', document: 'readonly', navigator: 'readonly', homebridge: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly' },
     },
   },
   // Test files — relaxed rules

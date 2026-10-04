@@ -41,3 +41,6 @@ tmp/
 # BMad agent files
 _bmad/
 _bmad-output/
+
+# Custom UI assets copied from @mp-consulting/homebridge-ui-kit at build time
+homebridge-ui/public/lib/

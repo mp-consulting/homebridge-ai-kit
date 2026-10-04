@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Kit</title>
+  <script>
+    (function () {
+      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.bsTheme = dark ? 'dark' : 'light';
+    }());
+  </script>
+  <!--
+    Served from the plugin, not a CDN: the Homebridge UI's content-security policy only
+    allows same-origin styles and scripts. `npm run copy:ui-assets` fills lib/.
+  -->
+  <link rel="stylesheet" href="lib/bootstrap.min.css">
+  <link rel="stylesheet" href="lib/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="lib/kit.css">
+  <link rel="stylesheet" href="lib/ai.css">
+  <style>
+    .snippet { white-space: pre; font-size: .8rem; max-height: 18rem; overflow: auto; }
+    .form-text code { font-size: .8em; }
+  </style>
+</head>
+<body>
+  <div class="container py-4">
+
+    <div class="mp-header mb-4">
+      <span class="mp-header-icon"><i class="bi bi-stars"></i></span>
+      <div>
+        <h1 class="mp-header-title">AI Kit <span id="assistant-badge"></span></h1>
+        <p class="mp-header-subtitle">Choose the model behind the Assistant, and let Claude Desktop, Claude Code or Cursor reach Homebridge.</p>
+      </div>
+    </div>
+
+    <!-- Provider -->
+    <div class="card border-0 shadow-sm mb-4 mp-settings-card">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Assistant</h2>
+
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" role="switch" id="enabled">
+          <label class="form-check-label" for="enabled">Enable the Assistant</label>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label mp-label" for="provider">Provider</label>
+          <select class="form-select" id="provider">
+            <option value="anthropic">Claude (Anthropic)</option>
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Gemini (Google)</option>
+            <option value="openai-compatible">OpenAI-compatible server (Ollama, LM Studio)</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label mp-label" for="model">Model</label>
+          <input class="form-control" id="model" autocomplete="off" spellcheck="false">
+          <div class="form-text" id="model-help"></div>
+        </div>
+
+        <div class="mb-3" id="apiKey-group">
+          <label class="form-label mp-label" for="apiKey">API key</label>
+          <div class="input-group">
+            <input class="form-control" id="apiKey" type="password" autocomplete="off" spellcheck="false">
+            <button class="btn btn-outline-secondary" type="button" id="toggle-key" aria-label="Show or hide the key"><i class="bi bi-eye"></i></button>
+          </div>
+          <div class="form-text">Stored in config.json on this Homebridge server. Plugin pages never see it.</div>
+        </div>
+
+        <div class="mb-3 d-none" id="baseUrl-group">
+          <label class="form-label mp-label" for="baseUrl">Server URL</label>
+          <input class="form-control" id="baseUrl" placeholder="http://127.0.0.1:11434/v1" spellcheck="false">
+          <div class="form-text">Ollama: <code>http://127.0.0.1:11434/v1</code> · LM Studio: <code>http://127.0.0.1:1234/v1</code></div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-sm-6">
+            <label class="form-label mp-label" for="maxOutputTokens">Maximum answer length (tokens)</label>
+            <input class="form-control" id="maxOutputTokens" type="number" min="64" step="64" placeholder="2048">
+          </div>
+          <div class="col-sm-6 d-none" id="contextTokens-group">
+            <label class="form-label mp-label" for="contextTokens">Context window (tokens)</label>
+            <input class="form-control" id="contextTokens" type="number" min="1024" step="1024" placeholder="8192">
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <span id="test-button-slot"></span>
+          <span id="status" class="small text-body-secondary"></span>
+        </div>
+        <div id="test-result" class="mt-3"></div>
+      </div>
+    </div>
+
+    <!-- MCP -->
+    <div class="card border-0 shadow-sm mb-4 mp-settings-card">
+      <div class="card-body">
+        <h2 class="h5 mb-1">MCP clients</h2>
+        <p class="small text-body-secondary">Claude Desktop, Claude Code and Cursor can control Homebridge through the MCP server, either launched by the client (stdio) or served by this plugin over HTTP.</p>
+
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" role="switch" id="http-enabled">
+          <label class="form-check-label" for="http-enabled">Serve MCP over HTTP from this plugin</label>
+        </div>
+
+        <div id="http-settings" class="d-none">
+          <div class="row g-3 mb-3">
+            <div class="col-sm-8">
+              <label class="form-label mp-label" for="http-host">Bind address</label>
+              <input class="form-control" id="http-host" placeholder="127.0.0.1">
+              <div class="form-text">127.0.0.1 keeps it on this machine. 0.0.0.0 exposes it to your network.</div>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label mp-label" for="http-port">Port</label>
+              <input class="form-control" id="http-port" type="number" min="1" max="65535" placeholder="8582">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label mp-label" for="http-token">Client token</label>
+            <div class="input-group">
+              <input class="form-control" id="http-token" type="password" autocomplete="off" spellcheck="false">
+              <button class="btn btn-outline-secondary" type="button" id="generate-token">Generate</button>
+            </div>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label mp-label" for="http-hb-url">Homebridge UI URL</label>
+              <input class="form-control" id="http-hb-url" placeholder="http://127.0.0.1:8581">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label mp-label" for="http-hb-token">Homebridge API token</label>
+              <input class="form-control" id="http-hb-token" type="password" autocomplete="off" spellcheck="false">
+              <div class="form-text">Create one in Glass UI. A read-only token blocks changes.</div>
+            </div>
+          </div>
+        </div>
+
+        <ul class="nav nav-tabs mp-tabs" role="tablist">
+          <li class="nav-item"><button class="nav-link active" data-snippet="claudeDesktop" type="button">Claude Desktop</button></li>
+          <li class="nav-item"><button class="nav-link" data-snippet="claudeCode" type="button">Claude Code</button></li>
+          <li class="nav-item"><button class="nav-link" data-snippet="cursor" type="button">Cursor</button></li>
+        </ul>
+        <div class="position-relative border border-top-0 rounded-bottom p-3">
+          <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2" type="button" id="copy-snippet"><i class="bi bi-clipboard"></i> Copy</button>
+          <pre class="snippet mb-0" id="snippet"></pre>
+        </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="include-token">
+          <label class="form-check-label small" for="include-token">Include the real token in the snippet</label>
+        </div>
+      </div>
+    </div>
+
+    <footer class="mp-footer">
+      <span>@mp-consulting/homebridge-ai-kit</span>
+    </footer>
+  </div>
+
+  <script src="lib/kit.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
