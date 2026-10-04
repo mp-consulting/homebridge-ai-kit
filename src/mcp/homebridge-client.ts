@@ -5,7 +5,20 @@
 
 import { readFileSync } from 'node:fs';
 import { createTrustedFetch } from './tls.js';
-import type { Accessory, AccessoryHistory, CachedAccessory, ChildBridge, Plugin, PluginJob, Room } from './types.js';
+import type {
+  Accessory,
+  AccessoryHistory,
+  CachedAccessory,
+  ChildBridge,
+  ChildBridgeHealthReport,
+  ConfigBackup,
+  InstanceBackup,
+  Plugin,
+  PluginJob,
+  Room,
+  Scene,
+  SceneRunResult,
+} from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -36,6 +49,39 @@ export function insecureTransportWarning(url: URL): string | null {
   return local
     ? null
     : `HOMEBRIDGE_URL uses plain http to a non-local host (${url.host}); your Homebridge credentials will be sent unencrypted.`;
+}
+
+/** A non-2xx answer from the Homebridge UI. The message keeps the historical format. */
+export class HomebridgeApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly method: string,
+    readonly path: string,
+    readonly body: string,
+  ) {
+    super(`Homebridge API error ${status} ${method} ${path}: ${body}`);
+    this.name = 'HomebridgeApiError';
+  }
+
+  /**
+   * True when the UI has no such route at all (NestJS answers `Cannot GET /api/…`), as opposed
+   * to a 404 from an existing route such as "Scene not found". Used to detect Glass UI-only endpoints.
+   */
+  get missingRoute(): boolean {
+    return this.status === 404 && (/Cannot (GET|POST|PUT|PATCH|DELETE) /.test(this.body) || /^\s*</.test(this.body));
+  }
+}
+
+/** Runs `fn`, turning "no such route" into an error that says the feature needs Homebridge Glass UI. */
+export async function requireGlassUi<T>(feature: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof HomebridgeApiError && error.missingRoute) {
+      throw new Error(`${feature} requires Homebridge Glass UI (this Homebridge UI has no ${error.method} ${error.path}).`, { cause: error });
+    }
+    throw error;
+  }
 }
 
 export interface HomebridgeClientOptions {
@@ -298,8 +344,7 @@ export class HomebridgeClient {
     }
 
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Homebridge API error ${res.status} ${method} ${path}: ${text}`);
+      throw new HomebridgeApiError(res.status, method, path, await res.text());
     }
 
     return res;
@@ -495,5 +540,57 @@ export class HomebridgeClient {
     const buffer = Buffer.concat(chunks);
     const tail = buffer.byteLength > maxBytes ? buffer.subarray(buffer.byteLength - maxBytes) : buffer;
     return { text: tail.toString('utf8'), truncated: total > maxBytes };
+  }
+
+  // ── Config backups ──────────────────────────────────────────────
+  // Both UIs copy config.json to a timestamped backup before every POST /api/config-editor.
+
+  /** The config.json backups the UI keeps, newest first. */
+  async listConfigBackups(): Promise<ConfigBackup[]> {
+    return this.request<ConfigBackup[]>('GET', '/api/config-editor/backups');
+  }
+
+  /** One config.json backup, parsed. The UI serves the raw file, so it may arrive as text. */
+  async getConfigBackup(backupId: string): Promise<Record<string, unknown>> {
+    const body = await this.request<unknown>('GET', `/api/config-editor/backups/${encodeURIComponent(backupId)}`);
+    const parsed = typeof body === 'string' ? (JSON.parse(body) as unknown) : body;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`Config backup ${backupId} is not a JSON object`);
+    }
+    return parsed as Record<string, unknown>;
+  }
+
+  // ── Instance backups ────────────────────────────────────────────
+
+  /** Writes a full instance backup (.tar.gz) to the UI's backup directory. */
+  async createInstanceBackup(): Promise<unknown> {
+    return this.request('POST', '/api/backup');
+  }
+
+  async listInstanceBackups(): Promise<InstanceBackup[]> {
+    return this.request<InstanceBackup[]>('GET', '/api/backup/scheduled-backups');
+  }
+
+  // ── Glass UI: scenes, child bridge health, notifications ────────
+
+  async listScenes(): Promise<Scene[]> {
+    return this.request<Scene[]>('GET', '/api/scenes');
+  }
+
+  async runScene(id: string): Promise<SceneRunResult> {
+    return this.request<SceneRunResult>('POST', `/api/scenes/${encodeURIComponent(id)}/run`);
+  }
+
+  async createScene(scene: Omit<Scene, 'id' | 'lastRun'>): Promise<Scene> {
+    return this.request<Scene>('POST', '/api/scenes', scene);
+  }
+
+  async getChildBridgeHealth(): Promise<ChildBridgeHealthReport> {
+    return this.request<ChildBridgeHealthReport>('GET', '/api/status/homebridge/child-bridges/health');
+  }
+
+  /** Sends a test notification to `channel`, or to every enabled channel. */
+  async sendTestNotification(channel?: string): Promise<Array<{ channel: string; ok: boolean; error?: string }>> {
+    return this.request('POST', '/api/notifications/test', channel ? { channel } : {});
   }
 }

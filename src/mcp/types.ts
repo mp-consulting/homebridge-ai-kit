@@ -89,3 +89,59 @@ export interface ChildBridge {
   manuallyStopped?: boolean;
   [key: string]: unknown;
 }
+
+/** `GET /api/config-editor/backups`: a config.json copy the UI made before a save. */
+export interface ConfigBackup {
+  /** Epoch ms of the save, as a string. */
+  id: string;
+  timestamp: string;
+  file?: string;
+}
+
+/** `GET /api/backup/scheduled-backups`: a full instance backup (.tar.gz). */
+export interface InstanceBackup {
+  id: string;
+  instanceId?: string;
+  timestamp: string;
+  fileName?: string;
+  /** Megabytes, as a string such as "12.3". */
+  size?: string;
+  [key: string]: unknown;
+}
+
+/** Glass UI scene: a named list of characteristic values set together. */
+export interface Scene {
+  id: string;
+  name: string;
+  actions: Array<{ uniqueId: string; characteristicType: string; value: string | number | boolean }>;
+  schedules: Array<{ cron: string; enabled: boolean }>;
+  lastRun?: { at: string; ok: boolean; trigger: 'manual' | 'schedule' };
+}
+
+export interface SceneRunResult {
+  sceneId: string;
+  ok: boolean;
+  results: Array<{ uniqueId: string; characteristicType: string; value: unknown; ok: boolean; error?: string }>;
+}
+
+/** Glass UI `GET /api/status/homebridge/child-bridges/health`. */
+export interface ChildBridgeHealthReport {
+  crashLoop: { crashes: number; windowMinutes: number };
+  bridges: Array<{
+    username: string;
+    name: string;
+    plugin: string;
+    identifier?: string;
+    status: string;
+    manuallyStopped?: boolean;
+    pid?: number;
+    upSince: string | null;
+    uptime: number | null;
+    restartCount: number;
+    crashCount: number;
+    recentCrashes: number;
+    crashLoop: boolean;
+    lastCrashAt: string | null;
+    memoryRss?: number;
+  }>;
+}
