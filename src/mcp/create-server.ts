@@ -14,6 +14,8 @@ import { register as registerSystem } from './tools/system.js';
 import { register as registerLogs } from './tools/logs.js';
 import { register as registerPluginJobs } from './tools/plugin-jobs.js';
 import { register as registerChildBridges } from './tools/child-bridges.js';
+import { register as registerScenes } from './tools/scenes.js';
+import { register as registerNotifications } from './tools/notifications.js';
 import { registerResources } from './resources.js';
 import { registerPrompts } from './prompts.js';
 import type { LiveSource } from './live.js';
@@ -36,6 +38,8 @@ const TOOL_GROUPS: RegisterTools[] = [
   registerLogs,
   registerPluginJobs,
   registerChildBridges,
+  registerScenes,
+  registerNotifications,
 ];
 
 export interface ServerOptions {
