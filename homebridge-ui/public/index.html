@@ -1,27 +1,20 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Kit</title>
-  <script>
-    (function () {
-      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.dataset.bsTheme = dark ? 'dark' : 'light';
-    }());
-  </script>
   <!--
-    Served from the plugin, not a CDN: the Homebridge UI's content-security policy only
-    allows same-origin styles and scripts. `npm run copy:ui-assets` fills lib/.
+    Everything is served from the plugin, not a CDN or inline: the Homebridge UI's
+    content-security policy only allows same-origin styles and scripts.
+    `npm run copy:ui-assets` fills lib/. kit.css already contains the Assistant
+    components, so ai.css (its standalone build) is not loaded.
   -->
+  <script src="js/theme.js"></script>
   <link rel="stylesheet" href="lib/bootstrap.min.css">
   <link rel="stylesheet" href="lib/bootstrap-icons.min.css">
   <link rel="stylesheet" href="lib/kit.css">
-  <link rel="stylesheet" href="lib/ai.css">
-  <style>
-    .snippet { white-space: pre; font-size: .8rem; max-height: 18rem; overflow: auto; }
-    .form-text code { font-size: .8em; }
-  </style>
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
   <div class="container py-4">
