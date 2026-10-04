@@ -53,5 +53,13 @@ jobs:
             npm publish -w packages/ai-core --provenance --access public
           fi
 
+      # Also skipped when already on npm, e.g. a release created for a version
+      # that was first published by hand (2.0.0).
       - name: Publish @mp-consulting/homebridge-ai-kit
-        run: npm publish --provenance --access public
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@mp-consulting/homebridge-ai-kit@$VERSION" version >/dev/null 2>&1; then
+            echo "@mp-consulting/homebridge-ai-kit@$VERSION is already published, skipping."
+          else
+            npm publish --provenance --access public
+          fi
