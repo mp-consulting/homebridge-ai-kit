@@ -72,6 +72,14 @@
         "minimum": 64,
         "default": 2048
       },
+      "maxRetries": {
+        "title": "Retries on provider errors",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10,
+        "placeholder": 2,
+        "description": "How many times a request is retried when the provider is busy, rate limits it or cannot be reached (with growing waits). 0 turns retrying off."
+      },
       "mcp": {
         "title": "MCP server",
         "type": "object",

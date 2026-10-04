@@ -5,6 +5,8 @@ import { OpenAiProvider } from './openai.js';
 import type { AiProvider, ChatChunk, ChatRequest, ChatResult } from './types.js';
 
 export * from './types.js';
+export { DEFAULT_RETRY, backoffDelay, isRetryableStatus, parseRetryAfter } from './http.js';
+export type { RetryOptions } from './http.js';
 export { AnthropicProvider } from './anthropic.js';
 export { GeminiProvider } from './gemini.js';
 export { OpenAiProvider } from './openai.js';

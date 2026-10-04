@@ -4,7 +4,9 @@ import type { AiConfig } from '../core/config.js';
 import { DEFAULT_BASE_URLS, DEFAULT_MAX_OUTPUT_TOKENS } from '../core/config.js';
 import { parseEvent, partsOf, postJson, readSse } from './http.js';
 import type { AiProvider, ChatChunk, ChatMessage, ChatRequest, ChatResult, ProviderCapabilities, StopReason, ToolCall } from './types.js';
-import { ProviderError } from './types.js';
+import { ProviderError, retryOptions } from './types.js';
+import type { ProviderRetryOptions } from './types.js';
+import type { RetryOptions } from './http.js';
 
 interface Part {
   text?: string;
@@ -122,8 +124,9 @@ export class GeminiProvider implements AiProvider {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly maxOutputTokens: number;
+  private readonly retry: RetryOptions;
 
-  constructor(config: Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'>) {
+  constructor(config: Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'> & ProviderRetryOptions) {
     if (!config.apiKey) {
       throw new ProviderError('gemini', 'an API key is required');
     }
@@ -131,6 +134,7 @@ export class GeminiProvider implements AiProvider {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URLS.gemini;
     this.maxOutputTokens = config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
+    this.retry = retryOptions(config);
     this.capabilities = { tools: true, streaming: true, contextTokens: config.contextTokens ?? 1_048_576, jsonMode: true };
   }
 
@@ -155,7 +159,7 @@ export class GeminiProvider implements AiProvider {
       generationConfig: { maxOutputTokens: req.maxOutputTokens ?? this.maxOutputTokens },
     };
     const url = `${this.baseUrl}/models/${encodeURIComponent(this.model)}:${method}`;
-    return postJson('gemini', url, { 'x-goog-api-key': this.apiKey }, body, req.signal);
+    return postJson('gemini', url, { 'x-goog-api-key': this.apiKey }, body, req.signal, this.retry);
   }
 
   async chat(req: ChatRequest): Promise<ChatResult> {

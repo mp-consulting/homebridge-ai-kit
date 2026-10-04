@@ -16,7 +16,7 @@ async function collect(it: AsyncIterable<ChatChunk>): Promise<ChatChunk[]> {
   return out;
 }
 
-const openai = () => new OpenAiProvider({ model: 'gpt-5', apiKey: 'sk-openai', maxOutputTokens: 500 });
+const openai = () => new OpenAiProvider({ model: 'gpt-5', apiKey: 'sk-openai', maxOutputTokens: 500, maxRetries: 0 });
 
 describe('toOpenAiMessages', () => {
   it('maps system, text, tool calls and tool results', () => {

@@ -14,7 +14,9 @@ import type {
   TokenUsage,
   ToolCall,
 } from './types.js';
-import { ProviderError } from './types.js';
+import { ProviderError, retryOptions } from './types.js';
+import type { ProviderRetryOptions } from './types.js';
+import type { RetryOptions } from './http.js';
 
 export const ANTHROPIC_VERSION = '2023-06-01';
 
@@ -104,8 +106,9 @@ export class AnthropicProvider implements AiProvider {
   private readonly url: string;
   private readonly apiKey: string;
   private readonly maxOutputTokens: number;
+  private readonly retry: RetryOptions;
 
-  constructor(config: Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'>) {
+  constructor(config: Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'> & ProviderRetryOptions) {
     if (!config.apiKey) {
       throw new ProviderError('anthropic', 'an API key is required');
     }
@@ -113,6 +116,7 @@ export class AnthropicProvider implements AiProvider {
     this.apiKey = config.apiKey;
     this.url = `${config.baseUrl ?? DEFAULT_BASE_URLS.anthropic}/v1/messages`;
     this.maxOutputTokens = config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
+    this.retry = retryOptions(config);
     this.capabilities = {
       tools: true,
       streaming: true,
@@ -141,6 +145,7 @@ export class AnthropicProvider implements AiProvider {
       { 'x-api-key': this.apiKey, 'anthropic-version': ANTHROPIC_VERSION },
       this.body(req, stream),
       req.signal,
+      this.retry,
     );
   }
 

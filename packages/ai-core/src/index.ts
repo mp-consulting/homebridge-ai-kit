@@ -20,7 +20,18 @@ export {
 export type { AiConfig, McpHttpConfig, ProviderName } from './core/config.js';
 
 // ── Providers ──
-export { AnthropicProvider, GeminiProvider, OpenAiProvider, ProviderError, complete, createProvider } from './providers/index.js';
+export {
+  AnthropicProvider,
+  DEFAULT_RETRY,
+  GeminiProvider,
+  OpenAiProvider,
+  ProviderError,
+  backoffDelay,
+  complete,
+  createProvider,
+  isRetryableStatus,
+  parseRetryAfter,
+} from './providers/index.js';
 export type {
   AiProvider,
   ChatChunk,
@@ -29,6 +40,8 @@ export type {
   ChatResult,
   ContentPart,
   ProviderCapabilities,
+  ProviderRetryOptions,
+  RetryOptions,
   StopReason,
   ToolCall,
   ToolDefinition,

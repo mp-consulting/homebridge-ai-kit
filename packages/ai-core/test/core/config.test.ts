@@ -35,6 +35,7 @@ describe('resolveAiConfig', () => {
       baseUrl: 'http://lm:1234/v1/',
       maxOutputTokens: '512',
       contextTokens: 32768,
+      maxRetries: '0',
       mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: ' AB:CD ', homebridgeCertPath: '/certs/hb.pem' } },
     });
     expect(config).toMatchObject({
@@ -45,6 +46,7 @@ describe('resolveAiConfig', () => {
       baseUrl: 'http://lm:1234/v1',
       maxOutputTokens: 512,
       contextTokens: 32768,
+      maxRetries: 0,
       mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: 'AB:CD', homebridgeCertPath: '/certs/hb.pem' } },
     });
   });
@@ -59,6 +61,9 @@ describe('resolveAiConfig', () => {
   it('rejects unknown providers and bad numbers', () => {
     expect(() => resolveAiConfig({ provider: 'apple' })).toThrow('Unknown AI provider "apple"');
     expect(() => resolveAiConfig({ maxOutputTokens: -1 })).toThrow('maxOutputTokens must be a positive integer');
+    expect(() => resolveAiConfig({ maxRetries: -1 })).toThrow('maxRetries must be a non-negative integer');
+    expect(() => resolveAiConfig({ maxRetries: 1.5 })).toThrow('maxRetries');
+    expect(resolveAiConfig({ maxRetries: null }).maxRetries).toBeUndefined();
     expect(() => resolveAiConfig({ mcp: { http: { port: 'abc' } } })).toThrow('mcp.http.port');
   });
 });
