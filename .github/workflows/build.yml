@@ -38,5 +38,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Root scripts cover both workspace packages (ai-core first, then ai-kit).
       - name: Test
         run: npm run test:coverage
+
+      - name: Pack
+        run: npm pack --dry-run -w packages/ai-core && npm pack --dry-run
