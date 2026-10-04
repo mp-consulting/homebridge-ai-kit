@@ -68,7 +68,7 @@ describe('generateJson', () => {
     await expect(generateJson({ provider, schema, prompt: 'p' })).resolves.toMatchObject({ data: { risk: 'low' } });
   });
 
-    it('reports a missing required key', async () => {
+  it('reports a missing required key', async () => {
     const { provider } = fakeProvider([{ text: '[]' }, { text: '{}' }]);
     await expect(generateJson({ provider, schema, prompt: 'p' })).rejects.toThrow("(root) must have required property 'risk'");
   });

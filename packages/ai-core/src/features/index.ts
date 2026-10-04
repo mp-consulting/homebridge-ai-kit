@@ -233,6 +233,9 @@ const ORGANIZATION_SCHEMA = {
 /** Output tokens one accessory can take in the reply (room entry, rename with a short reason). */
 const TOKENS_PER_ACCESSORY = 60;
 
+/** Organiser requests in flight at once. */
+const ORGANIZATION_CONCURRENCY = 3;
+
 /**
  * Accessories per request, so each reply fits the output limit. A large
  * installation in one request ran past `maxOutputTokens`, and the cut-off JSON
@@ -265,19 +268,32 @@ export async function suggestOrganization(o: SuggestOrganizationOptions): Promis
   let usage: TokenUsage = ZERO_USAGE;
   const size = organizationBatchSize(o.maxOutputTokens);
 
+  const batches: unknown[][] = [];
   for (let i = 0; i < items.length || i === 0; i += size) {
-    const { data, usage: used } = await generateJson<Omit<OrganizationSuggestion, 'usage'>>({
+    batches.push(items.slice(i, i + size));
+  }
+  const ask = (batch: unknown[]) =>
+    generateJson<Omit<OrganizationSuggestion, 'usage'>>({
       provider: o.provider,
       schema: ORGANIZATION_SCHEMA,
       system: system(PROMPTS.suggestOrganization.system, o.systemContext),
       prompt: PROMPTS.suggestOrganization.user({
-        accessories: boundedJson(items.slice(i, i + size), (cap * 3) / 4),
+        accessories: boundedJson(batch, (cap * 3) / 4),
         rooms: o.rooms === undefined ? undefined : boundedJson(o.rooms, cap / 4),
       }),
       maxOutputTokens: o.maxOutputTokens,
       signal: o.signal,
       onChunk: o.onChunk,
     });
+
+  // A few batches at a time: much faster than one after another, without
+  // flooding the provider's rate limit.
+  const replies: Array<Awaited<ReturnType<typeof ask>>> = [];
+  for (let i = 0; i < batches.length; i += ORGANIZATION_CONCURRENCY) {
+    replies.push(...(await Promise.all(batches.slice(i, i + ORGANIZATION_CONCURRENCY).map(ask))));
+  }
+
+  for (const { data, usage: used } of replies) {
     usage = addUsage(usage, used);
     for (const room of data.rooms) {
       const ids = room.accessories.map(resolve).filter((id): id is string => id !== undefined);
