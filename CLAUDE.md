@@ -27,11 +27,16 @@ packages/ai-core/                # @mp-consulting/homebridge-ai-core (own packag
 │   │   ├── prompts.ts           # PROMPTS — feature templates + MCP prompt texts
 │   │   ├── json.ts              # generateJson() (ajv + one repair retry), normalizePluginSchema()
 │   │   ├── tokens.ts            # estimateTokens(), trimToContext(), inputBudget()
-│   │   ├── usage.ts             # UsageTracker, costOf(), Claude price table
-│   │   └── redaction.ts         # redact / restore secrets in config.json, redactText() for free text
+│   │   ├── usage.ts             # UsageTracker (per day / month, budgets), costOf(), price table, registerModelPrices()
+│   │   ├── usage-store.ts       # JsonFileUsageStore — persists UsageTracker totals
+│   │   ├── logs.ts              # stripAnsi(), tailLines(), readLogTail()
+│   │   ├── confirm.ts           # withConfirmTimeout(), ConfirmationBroker — confirm callbacks for hosts
+│   │   ├── rate-limit.ts        # SlidingWindowRateLimiter
+│   │   ├── ttl-cache.ts         # TtlCache
+│   │   └── redaction.ts         # redact / restore secrets in config.json, redactText(), redactPairing()
 │   ├── providers/
 │   │   ├── types.ts             # AiProvider, ChatRequest/Result/Chunk, ToolDefinition, ProviderError
-│   │   ├── http.ts              # postJson(), SSE parser, shared helpers
+│   │   ├── http.ts              # postJson() (retries with backoff on 408/429/5xx), SSE parser, shared helpers
 │   │   ├── anthropic.ts         # Messages API (tool_use, SSE, thinking blocks replayed verbatim)
 │   │   ├── openai.ts            # Chat Completions (also openai-compatible: Ollama, LM Studio)
 │   │   ├── gemini.ts            # generateContent / streamGenerateContent, functionDeclarations
@@ -48,7 +53,7 @@ src/                             # ai-kit; imports ai-core as `@mp-consulting/ho
 │   ├── homebridge-ai-kit.ts     # CLI — `homebridge-ai-kit mcp [--http --port --host]`
 │   └── homebridge-mcp-server.ts # Alias kept for configs written for the old package name
 ├── agent/
-│   └── run-agent.ts             # runAgent() — provider ↔ in-memory MCP client loop, confirm for destructive tools
+│   └── run-agent.ts             # runAgent() — provider ↔ in-memory MCP client loop, confirm for destructive tools, untrusted-data wrapping, optional audit
 ├── plugin/
 │   ├── index.ts                 # `./plugin` export — re-exports ai-core's routes + its own
 │   ├── platform.ts              # AiKitPlatform — logs status, optionally runs the HTTP MCP server
@@ -56,32 +61,42 @@ src/                             # ai-kit; imports ai-core as `@mp-consulting/ho
 └── mcp/
     ├── index.ts                 # `./mcp` export
     ├── stdio.ts                 # runStdioServer() / runHttpFromEnv() — env wiring for the CLI
-    ├── http.ts                  # runHttpServer() — Streamable HTTP, bearer token, per-session servers
-    ├── create-server.ts         # createServer(client, { readOnly, live }) — tools, resources, prompts
+    ├── http.ts                  # runHttpServer() — Streamable HTTP, scoped bearer tokens, Origin check, session TTL/cap, 401 backoff
+    ├── create-server.ts         # createServer(client, { readOnly, scope, allowSecrets, audit, elicitation, live }) — tools, resources, prompts
+    ├── elicitation.ts           # withElicitation() — destructive tools ask the user through MCP elicitation
+    ├── accessory-select.ts      # list_accessories filters, selectAccessories(), isSecurityWrite() (locks / doors / alarms)
+    ├── config-diff.ts           # diffJson(), unifiedJsonDiff() for config dryRun previews
+    ├── log-parse.ts             # parse log lines (time, level from colour, plugin prefix), parseTimeBound()
     ├── homebridge-client.ts     # HTTP client for the Homebridge UI REST API (login, API token or getToken)
     ├── tls.ts                   # createTrustedFetch() — undici fetch trusting a pinned fingerprint / PEM (self-signed https UI)
     ├── live.ts                  # createLiveSource() — socket.io change feed with polling fallback; shareLiveSource()
     ├── audit.ts                 # createAuditLog() — JSONL audit log of write tool calls, rotated by size
     ├── scopes.ts                # token scopes read < control < admin
     ├── resources.ts             # homebridge:// resources + resources/subscribe
+    ├── resource-templates.ts    # homebridge://accessory/{uniqueId}, plugin/{name}, child-bridge/{id}
     ├── prompts.ts               # MCP prompts (text from ai-core's PROMPTS)
     ├── regex-search.ts          # regex log search in a killable worker thread
     ├── types.ts                 # RegisterTools signature + Homebridge API shapes
     └── tools/
-        ├── helpers.ts           # registrar (read-only filter), result helpers, handle(), pick()
-        ├── accessories.ts       # list, get, set (value checked vs metadata), room layout
+        ├── helpers.ts           # registrar (scope filter + audit), result helpers (structuredResult, untrusted), handle(), pick()
+        ├── output-schemas.ts    # outputSchema shapes for structured tool results
+        ├── accessories.ts       # list, get, set / set_security_accessory (value checked vs metadata), room layout
+        ├── bulk.ts              # set_accessories — one characteristic on many accessories, dryRun, maxTargets
+        ├── scenes.ts            # list_scenes, run_scene, save_scene (Glass UI)
+        ├── notifications.ts     # send_test_notification (Glass UI)
+        ├── config-backups.ts    # list_config_backups, restore_config, create_backup, list_backups
         ├── history.ts           # get_accessory_history — Glass UI sensor history, summarized + downsampled
         ├── server.ts            # status, restart, pairing, cached accessories
-        ├── child-bridges.ts     # list / restart / stop / start child bridges
-        ├── config.ts            # get / update / patch config.json
+        ├── child-bridges.ts     # list / health / restart / stop / start child bridges
+        ├── config.ts            # get / update / patch config.json (dryRun diffs)
         ├── plugins.ts           # list, search, lookup, versions, changelog
         ├── plugin-jobs.ts       # install / update / uninstall (Glass UI jobs, polled), get_plugin_job
         ├── system.ts            # system info (CPU, memory, OS)
-        └── logs.ts              # recent logs, search logs
+        └── logs.ts              # recent logs, search logs (since/until, level, plugin, context)
 config.schema.json               # Homebridge plugin schema (pluginAlias HomebridgeAiKit, customUi)
 homebridge-ui/
 ├── server.js                    # custom UI server: registerAiRoutes + /ai/test, /mcp/token, /mcp/snippets
-└── public/                      # settings page; lib/ is copied from homebridge-ui-kit at build (gitignored)
+└── public/                      # settings page (js/theme.js, js/app.js, css/app.css); lib/ is copied from homebridge-ui-kit at build (gitignored)
 ```
 
 Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/test/` (ai-core); shared MCP mocks live in `test/mcp/helpers.ts`, and `packages/ai-core/test/providers/helpers.ts` has `stubFetch()`, `sseResponse()` and `fakeProvider()`. ai-kit's vitest config aliases `@mp-consulting/homebridge-ai-core` to ai-core's sources, so its tests need no build; `tsc` (typecheck/build) uses ai-core's `dist`, so root `typecheck` and `build` build ai-core first. Both packages enforce coverage thresholds 95/90/95/95.
@@ -101,7 +116,7 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 
 - Each `tools/*.ts` file exports `register: RegisterTools`, a `(tool, client)` function. `tool` is the registrar from `createRegistrar()`, a thin wrapper over `McpServer.registerTool` that skips non-read-only tools in read-only mode.
 - Every tool must declare `title`, `description` and `annotations` (with `readOnlyHint`; write tools also set `destructiveHint`). Use the `READ` / `READ_REGISTRY` presets for read-only tools. Write tools need the `admin` token scope unless they set `scope: 'control'` (everyday device control).
-- Writes that unlock, open or disarm something go through the destructive `set_security_accessory`; `set_accessory` refuses them.
+- Writes that unlock, open or disarm something (`isSecurityWrite()` in `accessory-select.ts`) go through the destructive `set_security_accessory`; every other write tool refuses or skips them.
 - Homebridge-sourced free text (logs, changelogs) is returned through `untrusted()` / `untrustedResult()`; `runAgent` wraps every tool result it sends to the model.
 - Wrap handlers in `handle('<verb>ing <thing>', async (args) => ...)` and return `jsonResult()` / `textResult()` / `errorResult()`. Output is compact JSON.
 - `HomebridgeClient` handles all HTTP communication with the Homebridge REST API: JWT auth with a single shared login/refresh, one retry on 401, and a per-request timeout.
@@ -121,6 +136,7 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 - `HOMEBRIDGE_AI_AUDIT_LOG` — optional; JSONL audit log path for write tool calls
 - `HOMEBRIDGE_READ_ONLY` — optional; `true` registers only read-only tools
 - `HOMEBRIDGE_ALLOW_SECRETS` — optional; `true` lets `get_config` return real secrets (`includeSecrets`), never in read-only mode
+- `HOMEBRIDGE_ELICITATION` — optional; `false` stops destructive tools asking the user through MCP elicitation (default on)
 - `HOMEBRIDGE_TIMEOUT_MS` — optional; request timeout (default 30000)
 - `HOMEBRIDGE_CERT_FINGERPRINT` — optional; SHA-256 fingerprint of an https Homebridge UI's (self-signed) certificate to trust, pinned (plugin: `mcp.http.homebridgeCertFingerprint`)
 - `HOMEBRIDGE_CERT_PATH` — optional; PEM with the https Homebridge UI's certificate or CA to trust (plugin: `mcp.http.homebridgeCertPath`)

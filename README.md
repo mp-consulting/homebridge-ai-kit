@@ -35,7 +35,7 @@ Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP
 
 ## Features
 
-**MCP tools** (33): accessories (list, get, control with value checks, locks / garage doors / alarms behind confirmation, room layout, sensor history), server (status, restart, pairing, cached accessories), child bridges (list, restart, stop, start), config (read with secrets redacted, full write, partial `patch_config`), plugins (list, search, versions, schema, changelog, install, update, uninstall), system info and logs (recent lines, regex search).
+**MCP tools** (43): accessories (list, get, control with value checks, bulk control with `dryRun`, locks / garage doors / alarms behind confirmation, room layout, sensor history), scenes (list, run, save), server (status, restart, pairing, cached accessories), child bridges (list, health, restart, stop, start), config (read with secrets redacted, full write, partial `patch_config`, `dryRun` diffs, backups and restore), instance backups, test notifications, plugins (list, search, versions, schema, changelog, install, update, uninstall), system info and logs (recent lines, filtered regex search).
 
 **MCP resources** you can subscribe to: `homebridge://accessories`, `homebridge://logs/recent`, `homebridge://status`. Changes arrive over the Homebridge UI's socket.io namespaces, or by polling when the socket can't be used.
 
@@ -129,12 +129,12 @@ Client token scopes (each includes the ones before it):
 | Scope | Tools |
 |---|---|
 | `read` | Every read-only tool |
-| `control` | Plus `set_accessory` and `set_security_accessory` (locks still need the client's confirmation) |
-| `admin` | Plus everything else: config writes, plugin installs and updates, restarts, cached accessories, child bridges |
+| `control` | Plus device control: `set_accessory`, `set_security_accessory` (locks still need the user's confirmation), `set_accessories`, `run_scene` |
+| `admin` | Plus everything else: config writes and restores, backups, `save_scene`, test notifications, plugin installs and updates, restarts, cached accessories, child bridges |
 
 The main client token is `admin` (as before), or `read` when `readOnly` is on; `readOnly` caps the scoped tokens too. A session belongs to the token that opened it. The client token decides which tools a client sees; the Homebridge API token still limits what the server itself can do, so a `read` API token keeps everything read-only.
 
-Every write tool call is appended to an **audit log** (`<Homebridge storage>/homebridge-ai-kit-audit.jsonl` by default; `mcp.http.auditLog` / `auditLogPath`, or `HOMEBRIDGE_AI_AUDIT_LOG` for the CLI): one JSON object per line with `ts`, `tool`, `args` (secrets redacted), `ok`, `error`, `session`, `client`, `principal` (the token's name: `default` for the main token) and `scope`. It rotates at 5 MB and keeps three old files.
+Every write tool call is appended to an **audit log** (`<Homebridge storage>/homebridge-ai-kit-audit.jsonl` by default; `mcp.http.auditLog` / `auditLogPath`, or `HOMEBRIDGE_AI_AUDIT_LOG` for the CLI): one JSON object per line with `ts`, `tool`, `args` (secrets redacted), `ok`, `error`, `session`, `client`, `principal` (the token's name: `default` for the main token, `agent` for `runAgent`) and `scope`; `notConfirmed: true` marks a destructive call the user declined (MCP elicitation, or `runAgent`'s `confirm`), which did not run. Dry runs are logged too, with `dryRun: true` in `args`. `runAgent` takes the same `audit` option. It rotates at 5 MB and keeps three old files.
 
 Glass UI also stores `homebridgeTokenId`, the id of the API token it created, so it can revoke the token when you replace or remove it. The settings page keeps it (and any other field it doesn't show) when it saves.
 
@@ -247,7 +247,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 | Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `set_security_accessory` (locks, garage doors, alarms; destructive, so confirmed), `set_accessories` (many targets by id or filter, with `dryRun`; never locks, doors or alarms), `get_accessory_layout`, `get_accessory_history` |
 | Server | `get_homebridge_status`, `get_server_status`, `restart_homebridge`, `get_pairing_info`, `get_cached_accessories`, `remove_cached_accessory`, `reset_cached_accessories` |
 | Child bridges | `list_child_bridges`, `get_child_bridge_health`\*, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge` |
-| Scenes\* | `list_scenes`, `run_scene` (by id or name), `save_scene` (from the current state of chosen accessories) |
+| Scenes\* | `list_scenes`, `run_scene` (by id or name; refuses scenes that touch a lock, garage door or alarm), `save_scene` (from the current state of chosen accessories, never capturing locks, doors or alarms) |
 | Notifications\* | `send_test_notification` |
 | Config | `get_config`, `update_config` and `patch_config` (both with `dryRun` for a redacted diff; each write names the backup that undoes it), `list_config_backups`, `restore_config` |
 | Backups | `create_backup`, `list_backups` (full instance backups in the UI's backup directory) |
@@ -311,7 +311,7 @@ Everything in this table except `runAgent` comes from `@mp-consulting/homebridge
 
 - **Secrets stay out of the model's context.** `get_config`, `patch_config` and the Assistant features replace passwords, tokens, API keys (including the AI Kit `apiKey` and MCP tokens) and the bridge pin with `__REDACTED__`. Writes swap the placeholders back for the real values. `get_config`'s `includeSecrets` only exists when the server opts in with `HOMEBRIDGE_ALLOW_SECRETS=true` (`allowSecrets` for `createServer` / `runHttpServer`), and never in read-only mode. Free text sent to a provider (logs, errors) has credential-shaped values masked too.
 - **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. When the MCP client supports elicitation, the server itself asks the user to confirm each destructive tool call (arguments shown with secrets redacted; dry runs skip it; a declined or failed confirmation does not run the tool); `HOMEBRIDGE_ELICITATION=false` turns that off. Unlocking a door, opening a garage door or disarming an alarm only works through the destructive `set_security_accessory`, so it is confirmed too; `set_accessories` and scenes refuse those targets. Config writes can be previewed with `dryRun` and rolled back with `restore_config`. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
-- **Tool output is treated as data.** Logs, changelogs and other Homebridge-sourced text come back wrapped in `<untrusted-data source="…">` tags (`runAgent` wraps every tool result it sends to the model), with any tag inside the data defused, and the base system prompt tells the model never to follow instructions found in tool output and to change things only when the user asked. Combined with confirmation for destructive tools, a log line saying "unlock the front door" can't open it.
+- **Tool output is treated as data.** Logs (tools and the `homebridge://logs/recent` resource), changelogs and other Homebridge-sourced free text come back wrapped in `<untrusted-data source="…">` tags (`runAgent` wraps every tool result it sends to the model), with any tag inside the data defused (JSON results and `structuredContent` stay plain data so they parse), and the base system prompt tells the model never to follow instructions found in tool output and to change things only when the user asked. Combined with confirmation for destructive tools, a log line saying "unlock the front door" can't open it.
 - **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default. It checks `Origin`, expires idle sessions and slows down repeated bad tokens.
 - **Least privilege and an audit trail.** Extra client tokens can be limited to `read` or `control`, and every write tool call is logged with redacted arguments (see [MCP tokens](#mcp-tokens)).
 - **`update_config` rejects incomplete configs**, and regex log searches run in a worker thread that is killed after 5 seconds.
