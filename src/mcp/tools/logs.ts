@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stripAnsi } from '@mp-consulting/homebridge-ai-core';
 import type { HomebridgeClient } from '../homebridge-client.js';
 import type { RegisterTools } from '../types.js';
 import { RegexTimeoutError, regexSearch } from '../regex-search.js';
@@ -6,20 +7,11 @@ import { READ, errorMessage, errorResult, handle, textResult, untrusted } from '
 import { LOG_SEARCH } from './output-schemas.js';
 import { atLeast, parseLogLines, parseTimeBound } from '../log-parse.js';
 
-// The UI strips colour codes server-side, but a custom log path or an older UI
-// can still return them, so strip defensively before matching *and* displaying.
-// eslint-disable-next-line no-control-regex
-const ANSI_REGEX = /\u001B\[[0-9;]*m/g;
-
 /** Cap on how much of the log we keep in memory, in bytes. The rest is streamed past. */
 export const MAX_BYTES = 16 * 1024 * 1024;
 
 /** Wall-clock budget for a regex search, so a pathological pattern can't hang the server. */
 export const SEARCH_BUDGET_MS = 5000;
-
-function stripAnsi(s: string): string {
-  return s.replace(ANSI_REGEX, '');
-}
 
 function splitLines(text: string): string[] {
   const lines = text.split('\n');
