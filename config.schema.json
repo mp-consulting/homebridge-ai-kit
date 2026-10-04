@@ -1,0 +1,131 @@
+{
+  "pluginAlias": "HomebridgeAiKit",
+  "pluginType": "platform",
+  "singular": true,
+  "customUi": true,
+  "headerDisplay": "The Assistant: AI features for Homebridge and MP Consulting plugins, plus an MCP server for Claude Desktop, Claude Code and Cursor.",
+  "footerDisplay": "API keys stay on this Homebridge server and are never sent to the browser-side plugin pages.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "AI Kit",
+        "required": true
+      },
+      "enabled": {
+        "title": "Enable the Assistant",
+        "type": "boolean",
+        "default": true
+      },
+      "provider": {
+        "title": "Provider",
+        "type": "string",
+        "default": "anthropic",
+        "oneOf": [
+          { "title": "Claude (Anthropic)", "enum": ["anthropic"] },
+          { "title": "OpenAI", "enum": ["openai"] },
+          { "title": "Gemini (Google)", "enum": ["gemini"] },
+          { "title": "OpenAI-compatible server (Ollama, LM Studio)", "enum": ["openai-compatible"] }
+        ],
+        "required": true
+      },
+      "model": {
+        "title": "Model",
+        "type": "string",
+        "placeholder": "claude-sonnet-5-5",
+        "description": "Leave empty for the provider's default: claude-sonnet-5-5, gpt-5, gemini-2.5-pro, or llama3.1 for a local server."
+      },
+      "apiKey": {
+        "title": "API key",
+        "type": "string",
+        "x-sensitive": true,
+        "description": "Required for Claude, OpenAI and Gemini. Optional for a local server.",
+        "condition": {
+          "functionBody": "return model.provider !== 'openai-compatible' || !!model.apiKey;"
+        }
+      },
+      "baseUrl": {
+        "title": "Server URL",
+        "type": "string",
+        "format": "uri",
+        "placeholder": "http://127.0.0.1:11434/v1",
+        "description": "The OpenAI-compatible endpoint, e.g. Ollama http://127.0.0.1:11434/v1 or LM Studio http://127.0.0.1:1234/v1.",
+        "condition": {
+          "functionBody": "return model.provider === 'openai-compatible';"
+        }
+      },
+      "contextTokens": {
+        "title": "Context window (tokens)",
+        "type": "integer",
+        "minimum": 1024,
+        "placeholder": 8192,
+        "description": "How much text the local model can read at once. Inputs such as logs are trimmed to fit.",
+        "condition": {
+          "functionBody": "return model.provider === 'openai-compatible';"
+        }
+      },
+      "maxOutputTokens": {
+        "title": "Maximum answer length (tokens)",
+        "type": "integer",
+        "minimum": 64,
+        "default": 2048
+      },
+      "mcp": {
+        "title": "MCP server",
+        "type": "object",
+        "properties": {
+          "http": {
+            "title": "MCP over HTTP",
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "title": "Serve MCP over HTTP",
+                "type": "boolean",
+                "default": false,
+                "description": "Lets Claude Desktop, Claude Code and Cursor control Homebridge through this plugin."
+              },
+              "host": {
+                "title": "Bind address",
+                "type": "string",
+                "default": "127.0.0.1",
+                "description": "127.0.0.1 keeps it on this machine. Use 0.0.0.0 only on a trusted network.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "port": {
+                "title": "Port",
+                "type": "integer",
+                "default": 8582,
+                "minimum": 1,
+                "maximum": 65535,
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "token": {
+                "title": "Client token",
+                "type": "string",
+                "x-sensitive": true,
+                "description": "MCP clients must send this as a bearer token.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "homebridgeUrl": {
+                "title": "Homebridge UI URL",
+                "type": "string",
+                "format": "uri",
+                "placeholder": "http://127.0.0.1:8581",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "homebridgeToken": {
+                "title": "Homebridge API token",
+                "type": "string",
+                "x-sensitive": true,
+                "description": "An API token from Homebridge Glass UI (Settings, API tokens) the MCP tools act with. Use a read-only token to block changes.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
