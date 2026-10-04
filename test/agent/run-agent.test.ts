@@ -62,6 +62,27 @@ describe('runAgent', () => {
     expect(client.setAccessoryCharacteristic).toHaveBeenCalled();
   });
 
+  it('asks before unlocking a door, and set_accessory cannot bypass it', async () => {
+    const door = { uniqueId: 'door', serviceName: 'Front Door', type: 'LockMechanism', values: { LockTargetState: 1 } };
+    const client = mockClient({ getAccessory: vi.fn().mockResolvedValue(door), setAccessoryCharacteristic: vi.fn().mockResolvedValue({ ok: true }) });
+    const unlock = { uniqueId: 'door', characteristicType: 'LockTargetState', value: 0 };
+    const { provider } = fakeProvider([
+      { toolCalls: [{ id: 'a', name: 'set_accessory', arguments: unlock }] },
+      { toolCalls: [{ id: 'b', name: 'set_security_accessory', arguments: unlock }] },
+      { text: 'not unlocked' },
+    ]);
+    const result = await runAgent({ provider, client, messages: [{ role: 'user', content: 'unlock' }] });
+    expect(result.toolCalls.map((c) => c.isError)).toEqual([true, true]);
+    expect(result.toolCalls[1].result).toContain('did not allow set_security_accessory');
+    expect(client.setAccessoryCharacteristic).not.toHaveBeenCalled();
+
+    const confirm = vi.fn().mockResolvedValue(true);
+    const { provider: p2 } = fakeProvider([{ toolCalls: [{ id: 'c', name: 'set_security_accessory', arguments: unlock }] }, { text: 'unlocked' }]);
+    await runAgent({ provider: p2, client, messages: [{ role: 'user', content: 'unlock' }], confirm });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(client.setAccessoryCharacteristic).toHaveBeenCalledWith('door', 'LockTargetState', 0);
+  });
+
   it('hides write tools in read-only mode and reports unknown tools as errors', async () => {
     const { provider, requests } = fakeProvider([{ toolCalls: [{ id: 'x', name: 'update_config', arguments: {} }] }, { text: 'sorry' }]);
     const result = await runAgent({ provider, client: mockClient(), readOnly: true, messages: [{ role: 'user', content: 'x' }] });
