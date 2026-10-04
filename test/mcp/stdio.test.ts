@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envList, httpOptionsFromEnv, serverOptionsFromEnv } from '../../src/mcp/stdio.js';
+import { envList, httpOptionsFromEnv, parseClientTokens, serverOptionsFromEnv } from '../../src/mcp/stdio.js';
 
 describe('httpOptionsFromEnv', () => {
   it('reads the token and transport limits', () => {
@@ -34,5 +34,26 @@ describe('serverOptionsFromEnv', () => {
     expect(serverOptionsFromEnv({})).toEqual({ readOnly: false, allowSecrets: false });
     expect(serverOptionsFromEnv({ HOMEBRIDGE_ALLOW_SECRETS: 'true' })).toEqual({ readOnly: false, allowSecrets: true });
     expect(serverOptionsFromEnv({ HOMEBRIDGE_READ_ONLY: '1', HOMEBRIDGE_ALLOW_SECRETS: 'yes' })).toEqual({ readOnly: true, allowSecrets: false });
+  });
+
+  it('opens an audit log at HOMEBRIDGE_AI_AUDIT_LOG', () => {
+    expect(serverOptionsFromEnv({ HOMEBRIDGE_AI_AUDIT_LOG: ' /tmp/audit.jsonl ' }).audit?.path).toBe('/tmp/audit.jsonl');
+    expect(serverOptionsFromEnv({ HOMEBRIDGE_AI_AUDIT_LOG: ' ' }).audit).toBeUndefined();
+  });
+});
+
+describe('parseClientTokens', () => {
+  it('reads scope:token pairs', () => {
+    expect(parseClientTokens('read:abc, control:d:e')).toEqual([
+      { scope: 'read', token: 'abc', name: 'read-1' },
+      { scope: 'control', token: 'd:e', name: 'control-2' },
+    ]);
+    expect(httpOptionsFromEnv({ HOMEBRIDGE_AI_MCP_TOKENS: 'admin:x' }).clients).toEqual([{ scope: 'admin', token: 'x', name: 'admin-1' }]);
+  });
+
+  it('rejects malformed entries', () => {
+    for (const bad of ['abc', 'root:abc', 'read:']) {
+      expect(() => parseClientTokens(bad)).toThrow('HOMEBRIDGE_AI_MCP_TOKENS entry 1');
+    }
   });
 });

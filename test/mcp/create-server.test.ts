@@ -78,6 +78,60 @@ describe('createServer', () => {
     expect(await call({ allowSecrets: true })).toMatchObject({ hasParam: true, text: expect.stringContaining('031-45-154') });
   });
 
+  it('registers only the tools a scope allows', async () => {
+    const names = async (options: ServerOptions) => (await (await connect(mockClient(), options)).listTools()).tools.map((t) => t.name);
+    const control = await names({ scope: 'control' });
+    expect(control.filter((n) => WRITE_TOOLS.includes(n)).sort()).toEqual(['set_accessory', 'set_security_accessory']);
+    expect(control).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length + 2);
+    expect(await names({ scope: 'read' })).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length);
+    expect(await names({ scope: 'admin', readOnly: true })).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length);
+    expect(await names({ scope: 'admin' })).toHaveLength(TOOL_COUNT);
+    // Secrets are admin-only.
+    const schema = async (options: ServerOptions) =>
+      (await (await connect(mockClient(), options)).listTools()).tools.find((t) => t.name === 'get_config')!.inputSchema.properties ?? {};
+    expect(await schema({ scope: 'control', allowSecrets: true })).not.toHaveProperty('includeSecrets');
+  });
+
+  it('audits write tool calls with redacted arguments, but not reads', async () => {
+    const records: unknown[] = [];
+    const audit = { record: vi.fn((e: unknown) => void records.push(e)) };
+    const client = mockClient({
+      getAccessory: vi.fn().mockResolvedValue({ uniqueId: 'lamp', serviceName: 'Lamp', type: 'Lightbulb' }),
+      setAccessoryCharacteristic: vi.fn().mockResolvedValue({ ok: true }),
+      getConfig: vi.fn().mockResolvedValue({ bridge: {}, platforms: [{ platform: 'X', password: 'hunter2' }] }),
+      updateConfig: vi.fn().mockRejectedValue(new Error('disk full, token=abc123')),
+      restartServer: vi.fn().mockResolvedValue(undefined),
+    });
+    const mcp = await connect(client, { audit, principal: 'default' });
+    await mcp.callTool({ name: 'get_config', arguments: {} });
+    await mcp.callTool({ name: 'set_accessory', arguments: { uniqueId: 'lamp', characteristicType: 'On', value: true } });
+    await mcp.callTool({ name: 'update_config', arguments: { config: { bridge: {}, platforms: [{ platform: 'X', password: 'hunter2' }] } } });
+    await mcp.callTool({ name: 'restart_homebridge', arguments: {} });
+
+    expect(records).toHaveLength(3);
+    expect(records[0]).toMatchObject({
+      tool: 'set_accessory',
+      args: { uniqueId: 'lamp', characteristicType: 'On', value: true },
+      ok: true,
+      client: 'test/0.0.0',
+      principal: 'default',
+      scope: 'admin',
+      ts: expect.stringMatching(/^\d{4}-/),
+    });
+    expect(records[1]).toMatchObject({ tool: 'update_config', ok: false, error: expect.stringContaining('disk full') });
+    expect(JSON.stringify(records[1])).not.toContain('hunter2');
+    expect(JSON.stringify(records[1])).not.toContain('abc123');
+    expect(records[2]).toMatchObject({ tool: 'restart_homebridge', args: {}, ok: true });
+  });
+
+  it('keeps a write working when the audit sink fails', async () => {
+    const audit = { record: vi.fn().mockRejectedValue(new Error('sink down')) };
+    const client = mockClient({ restartServer: vi.fn().mockResolvedValue(undefined) });
+    const result = await (await connect(client, { audit })).callTool({ name: 'restart_homebridge', arguments: {} });
+    expect(result.isError).toBeFalsy();
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ tool: 'restart_homebridge', ok: true }));
+  });
+
   it('rejects an update_config without a bridge block before calling Homebridge', async () => {
     const client = mockClient({ updateConfig: vi.fn() });
     const mcp = await connect(client);

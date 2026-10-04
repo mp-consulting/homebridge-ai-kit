@@ -17,6 +17,9 @@ import { createServer } from './create-server.js';
 import type { HomebridgeClient } from './homebridge-client.js';
 import type { LiveSource } from './live.js';
 import { createLiveSource, shareLiveSource } from './live.js';
+import type { AuditSink } from './audit.js';
+import type { ClientToken, Scope } from './scopes.js';
+import { isScope } from './scopes.js';
 
 export const MCP_PATH = '/mcp';
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
@@ -35,10 +38,15 @@ export interface HttpServerOptions {
   port?: number;
   /** Default 127.0.0.1. Binding elsewhere exposes Homebridge control to the network. */
   host?: string;
-  /** Bearer token every request must carry. Required. */
-  token: string;
+  /** The main bearer token: full (`admin`) access, or `read` with `readOnly`. Required unless `clients` has one. */
+  token?: string;
+  /** More bearer tokens, each with its own scope (`read`, `control` or `admin`). */
+  clients?: ClientToken[];
   client: HomebridgeClient;
+  /** Caps every token at `read`. */
   readOnly?: boolean;
+  /** Records every write tool call, with the token's name and scope. */
+  audit?: AuditSink;
   /** Let `get_config` return real secrets when asked; ignored in read-only mode. */
   allowSecrets?: boolean;
   /** Change feed for `resources/subscribe`, shared by every session. Default: {@link createLiveSource}. */
@@ -66,11 +74,50 @@ export interface RunningHttpServer {
   close(): Promise<void>;
 }
 
-function sameToken(given: string, expected: string): boolean {
-  // Hash both so the comparison is constant-time regardless of length.
-  const a = createHash('sha256').update(given).digest();
-  const b = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(a, b);
+interface Principal {
+  name: string;
+  scope: Scope;
+  /** SHA-256 of the token: comparing hashes is constant-time regardless of length. */
+  hash: Buffer;
+}
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest();
+
+function principals(options: HttpServerOptions): Principal[] {
+  const list: Array<{ token: string; scope: unknown; name?: string }> = [];
+  if (options.token) {
+    list.push({ token: options.token, scope: 'admin', name: 'default' });
+  }
+  (options.clients ?? []).forEach((c, i) => list.push({ ...c, name: c.name?.trim() || `client-${i + 1}` }));
+  if (list.length === 0) {
+    throw new Error('A bearer token is required to serve MCP over HTTP (set HOMEBRIDGE_AI_MCP_TOKEN)');
+  }
+  const seen = new Set<string>();
+  return list.map(({ token, scope, name }) => {
+    if (!token?.trim()) {
+      throw new Error(`MCP client "${name}" has no token`);
+    }
+    if (!isScope(scope)) {
+      throw new Error(`MCP client "${name}" has an unknown scope ${JSON.stringify(scope)}; use read, control or admin`);
+    }
+    if (seen.has(token)) {
+      throw new Error(`MCP client "${name}" reuses another client's token`);
+    }
+    seen.add(token);
+    return { name: name!, scope: options.readOnly ? 'read' : scope, hash: sha256(token) };
+  });
+}
+
+/** The principal whose token matches; every token is compared so timing doesn't reveal which. */
+function authenticate(given: string, all: Principal[]): Principal | undefined {
+  const hash = sha256(given);
+  let match: Principal | undefined;
+  for (const p of all) {
+    if (timingSafeEqual(hash, p.hash) && !match) {
+      match = p;
+    }
+  }
+  return match;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
@@ -160,6 +207,8 @@ class AuthThrottle {
 
 interface Session {
   transport: StreamableHTTPServerTransport;
+  /** The token that opened it; other tokens can't use it. */
+  principal: Principal;
   lastSeen: number;
   /** Requests (including open SSE streams) still in progress; a busy session is never idle. */
   active: number;
@@ -180,10 +229,8 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 }
 
 export async function runHttpServer(options: HttpServerOptions): Promise<RunningHttpServer> {
-  const { token, client } = options;
-  if (!token) {
-    throw new Error('A bearer token is required to serve MCP over HTTP (set HOMEBRIDGE_AI_MCP_TOKEN)');
-  }
+  const { client } = options;
+  const known = principals(options);
   const host = options.host ?? '127.0.0.1';
   const allowedOrigins = new Set((options.allowedOrigins ?? []).map((o) => o.trim()).filter(Boolean).map(normalizeOrigin));
   const maxSessions = Math.max(1, options.maxSessions ?? DEFAULT_MAX_SESSIONS);
@@ -244,7 +291,8 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
     }
     const auth = req.headers.authorization ?? '';
     const given = /^Bearer\s+(.+)$/i.exec(auth)?.[1]?.trim() ?? '';
-    if (!given || !sameToken(given, token)) {
+    const principal = given ? authenticate(given, known) : undefined;
+    if (!principal) {
       throttle.fail(address);
       return rpcError(res, 401, 'Unauthorized', { 'WWW-Authenticate': 'Bearer realm="homebridge-ai-kit"' });
     }
@@ -252,6 +300,9 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
 
     const sessionId = req.headers['mcp-session-id'];
     const existing = typeof sessionId === 'string' ? sessions.get(sessionId) : undefined;
+    if (existing && existing.principal !== principal) {
+      return rpcError(res, 403, 'Forbidden: this session belongs to another token');
+    }
 
     if (req.method === 'POST') {
       let body: unknown;
@@ -270,7 +321,7 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
       if (sessions.size >= maxSessions && !evictOne()) {
         return rpcError(res, 503, `Too many active sessions (max ${maxSessions})`);
       }
-      const session: Session = { transport: undefined as unknown as StreamableHTTPServerTransport, lastSeen: Date.now(), active: 0 };
+      const session: Session = { transport: undefined as unknown as StreamableHTTPServerTransport, principal, lastSeen: Date.now(), active: 0 };
       const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
@@ -278,7 +329,14 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
         },
       });
       session.transport = transport;
-      const server = createServer(client, { readOnly: options.readOnly, allowSecrets: options.allowSecrets, live });
+      const server = createServer(client, {
+        readOnly: options.readOnly,
+        scope: principal.scope,
+        allowSecrets: options.allowSecrets,
+        live,
+        audit: options.audit,
+        principal: principal.name,
+      });
       transport.onclose = () => {
         if (transport.sessionId && sessions.get(transport.sessionId) === session) {
           sessions.delete(transport.sessionId);

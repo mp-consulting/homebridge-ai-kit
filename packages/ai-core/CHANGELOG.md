@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `McpHttpConfig` / `resolveAiConfig` read `mcp.http.readOnly` (default false), `mcp.http.clients` (extra client tokens, `{ name?, token, scope }` with scope `read` (default), `control` or `admin`; rows without a token are skipped, an unknown scope throws), `mcp.http.auditLog` (default true) and `mcp.http.auditLogPath`. New types `McpClientConfig`, `McpScope`.
 - `McpHttpConfig.allowedOrigins` / `resolveAiConfig` read `mcp.http.allowedOrigins` (an array, or a comma-separated string): browser origins ai-kit's HTTP MCP server accepts.
 
 ## [2.1.0] - 2026-10-04

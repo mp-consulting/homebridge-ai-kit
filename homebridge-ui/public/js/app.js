@@ -24,6 +24,11 @@
     return Number.isFinite(n) && n > 0 ? n : undefined;
   }
 
+  function list(value) {
+    const items = value.split(',').map((s) => s.trim()).filter(Boolean);
+    return items.length ? items : undefined;
+  }
+
   function clean(obj) {
     Object.keys(obj).forEach((k) => {
       if (obj[k] === undefined || obj[k] === '') {
@@ -48,6 +53,10 @@
       homebridgeToken: $('http-hb-token').value.trim(),
       homebridgeCertFingerprint: $('http-hb-cert-fingerprint').value.trim(),
       homebridgeCertPath: $('http-hb-cert-path').value.trim(),
+      readOnly: $('http-read-only').checked,
+      allowedOrigins: list($('http-allowed-origins').value),
+      auditLog: $('http-audit-log').checked,
+      auditLogPath: $('http-audit-log-path').value.trim(),
     }));
     mcp.http = http;
     const provider = $('provider').value;
@@ -81,6 +90,10 @@
     $('http-hb-token').value = http.homebridgeToken || '';
     $('http-hb-cert-fingerprint').value = http.homebridgeCertFingerprint || '';
     $('http-hb-cert-path').value = http.homebridgeCertPath || '';
+    $('http-read-only').checked = http.readOnly === true;
+    $('http-allowed-origins').value = (http.allowedOrigins || []).join(', ');
+    $('http-audit-log').checked = http.auditLog !== false;
+    $('http-audit-log-path').value = http.auditLogPath || '';
   }
 
   function refreshVisibility() {
@@ -91,6 +104,7 @@
     $('model').placeholder = DEFAULT_MODELS[provider];
     $('model-help').textContent = MODEL_HELP[provider] + ' Leave empty for the default.';
     $('http-settings').classList.toggle('d-none', !$('http-enabled').checked);
+    $('http-audit-log-path-group').classList.toggle('d-none', !$('http-audit-log').checked);
   }
 
   let saveTimer;

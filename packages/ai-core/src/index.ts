@@ -17,7 +17,7 @@ export {
   readAiConfig,
   resolveAiConfig,
 } from './core/config.js';
-export type { AiConfig, McpHttpConfig, ProviderName } from './core/config.js';
+export type { AiConfig, McpClientConfig, McpHttpConfig, McpScope, ProviderName } from './core/config.js';
 
 // ── Providers ──
 export { AnthropicProvider, GeminiProvider, OpenAiProvider, ProviderError, complete, createProvider } from './providers/index.js';

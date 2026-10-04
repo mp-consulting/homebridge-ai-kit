@@ -89,13 +89,20 @@ Then open its settings in the Homebridge UI. The settings page edits the `Homebr
       "homebridgeToken": "hbg_…",     // Glass UI API token the tools act with
       "homebridgeTokenId": "…",       // written by Glass UI so it can revoke that token; leave as is
       "homebridgeCertFingerprint": "AB:CD:…", // https UI with a self-signed certificate: its SHA-256 fingerprint
-      "homebridgeCertPath": "/path/to/certificate.pem" // or a PEM with the UI's certificate or its CA
+      "homebridgeCertPath": "/path/to/certificate.pem", // or a PEM with the UI's certificate or its CA
+      "readOnly": false,              // true caps every client token at read-only
+      "clients": [                    // more client tokens, each with a scope: read | control | admin
+        { "name": "Dashboard", "token": "…", "scope": "read" }
+      ],
+      "allowedOrigins": ["https://my-dashboard.local"], // browser pages allowed besides localhost / this server's IP
+      "auditLog": true,               // log every write tool call (JSONL)
+      "auditLogPath": "/var/lib/homebridge/homebridge-ai-kit-audit.jsonl" // default: Homebridge storage path
     }
   }
 }
 ```
 
-With `mcp.http.enabled`, the plugin serves MCP at `http://<host>:<port>/mcp` while Homebridge runs. It needs a client token (`mcp.http.token` or `HOMEBRIDGE_AI_MCP_TOKEN`) and Homebridge credentials: a Glass UI API token in `homebridgeToken`, or the `HOMEBRIDGE_*` environment variables. A read-only API token gives clients read-only access.
+With `mcp.http.enabled`, the plugin serves MCP at `http://<host>:<port>/mcp` while Homebridge runs. It needs a client token (`mcp.http.token`, `HOMEBRIDGE_AI_MCP_TOKEN`, or at least one scoped token in `mcp.http.clients`) and Homebridge credentials: a Glass UI API token in `homebridgeToken`, or the `HOMEBRIDGE_*` environment variables. A read-only API token gives clients read-only access.
 
 ### MCP tokens
 
@@ -103,7 +110,8 @@ The MCP server uses two different tokens:
 
 | Token | What it is for | Stored in |
 |---|---|---|
-| **Client token** | What Claude, Cursor or another MCP client must send (`Authorization: Bearer …`) to reach the HTTP MCP server | `mcp.http.token` (or `HOMEBRIDGE_AI_MCP_TOKEN` for the CLI) |
+| **Client token** | What Claude, Cursor or another MCP client must send (`Authorization: Bearer …`) to reach the HTTP MCP server. Full access (`admin`), or read-only with `mcp.http.readOnly` | `mcp.http.token` (or `HOMEBRIDGE_AI_MCP_TOKEN` for the CLI) |
+| **Scoped client tokens** | Optional extra client tokens with less access, e.g. a read-only token for a dashboard | `mcp.http.clients` (or `HOMEBRIDGE_AI_MCP_TOKENS` for the CLI) |
 | **Homebridge API token** | What the MCP server sends to the Homebridge UI to run its tools. Its scope decides what clients can do: `read` gives read-only tools, `admin` gives all of them | `mcp.http.homebridgeToken` (or `HOMEBRIDGE_TOKEN` for the CLI) |
 
 Where to set or generate them:
@@ -111,6 +119,18 @@ Where to set or generate them:
 - **Homebridge Glass UI 2.0.0-beta.6 or later:** *Settings → Assistant → MCP server* generates the client token, creates the Homebridge API token in one click (read-only or admin, revoked again when you replace or remove it), and shows the client configs. Each secret is shown once; after that the page only says whether one is set.
 - **This plugin's settings page:** *Generate* creates a client token. Paste a Homebridge API token created in Glass UI under *Users → API Tokens*.
 - **The CLI:** set `HOMEBRIDGE_AI_MCP_TOKEN` and `HOMEBRIDGE_TOKEN` (see [MCP server](#mcp-server)), e.g. `HOMEBRIDGE_AI_MCP_TOKEN=$(openssl rand -base64 24)`.
+
+Client token scopes (each includes the ones before it):
+
+| Scope | Tools |
+|---|---|
+| `read` | Every read-only tool |
+| `control` | Plus `set_accessory` and `set_security_accessory` (locks still need the client's confirmation) |
+| `admin` | Plus everything else: config writes, plugin installs and updates, restarts, cached accessories, child bridges |
+
+The main client token is `admin` (as before), or `read` when `readOnly` is on; `readOnly` caps the scoped tokens too. A session belongs to the token that opened it. The client token decides which tools a client sees; the Homebridge API token still limits what the server itself can do, so a `read` API token keeps everything read-only.
+
+Every write tool call is appended to an **audit log** (`<Homebridge storage>/homebridge-ai-kit-audit.jsonl` by default; `mcp.http.auditLog` / `auditLogPath`, or `HOMEBRIDGE_AI_AUDIT_LOG` for the CLI): one JSON object per line with `ts`, `tool`, `args` (secrets redacted), `ok`, `error`, `session`, `client`, `principal` (the token's name: `default` for the main token) and `scope`. It rotates at 5 MB and keeps three old files.
 
 Glass UI also stores `homebridgeTokenId`, the id of the API token it created, so it can revoke the token when you replace or remove it. The settings page keeps it (and any other field it doesn't show) when it saves.
 
@@ -169,7 +189,9 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 | `HOMEBRIDGE_TIMEOUT_MS` | Request timeout (default `30000`) |
 | `HOMEBRIDGE_CERT_FINGERPRINT` | SHA-256 fingerprint of an `https` Homebridge UI's self-signed certificate to trust (pinned). See [self-signed certificates](#homebridge-ui-over-https-with-a-self-signed-certificate) |
 | `HOMEBRIDGE_CERT_PATH` | PEM file with the `https` Homebridge UI's certificate or its CA to trust |
-| `HOMEBRIDGE_AI_MCP_TOKEN` | Bearer token required by `--http` |
+| `HOMEBRIDGE_AI_MCP_TOKEN` | Bearer token required by `--http` (full access, or read-only with `HOMEBRIDGE_READ_ONLY`) |
+| `HOMEBRIDGE_AI_MCP_TOKENS` | `--http`: more tokens with a scope, comma-separated `scope:token` pairs, e.g. `read:abc,control:def` |
+| `HOMEBRIDGE_AI_AUDIT_LOG` | Path of a JSONL audit log of write tool calls (off by default for the CLI) |
 | `HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS` | `--http`: comma-separated browser origins allowed besides loopback and the server's own IP (`*` for any) |
 | `HOMEBRIDGE_AI_MCP_MAX_SESSIONS` | `--http`: most concurrent sessions (default `32`; the least recently used idle one is closed to make room) |
 | `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES` | `--http`: close a session after this long without a request (default `30`) |
@@ -271,14 +293,15 @@ const result = await runAgent({
 
 Everything in this table except `runAgent` comes from `@mp-consulting/homebridge-ai-core` and is re-exported here unchanged.
 
-`./mcp` exports `createServer`, `HomebridgeClient`, `runStdioServer`, `runHttpServer`, `createLiveSource`; `./plugin` exports `registerAiRoutes` and `testAiConnection` (from ai-core's `./plugin`), `mcpClientSnippets` and `AiKitPlatform`.
+`./mcp` exports `createServer`, `HomebridgeClient`, `runStdioServer`, `runHttpServer`, `createLiveSource`, `shareLiveSource`, `createAuditLog` and the token `SCOPES`; `./plugin` exports `registerAiRoutes` and `testAiConnection` (from ai-core's `./plugin`), `mcpClientSnippets` and `AiKitPlatform`.
 
 ## Security
 
 - **Secrets stay out of the model's context.** `get_config`, `patch_config` and the Assistant features replace passwords, tokens, API keys (including the AI Kit `apiKey` and MCP tokens) and the bridge pin with `__REDACTED__`. Writes swap the placeholders back for the real values. `get_config`'s `includeSecrets` only exists when the server opts in with `HOMEBRIDGE_ALLOW_SECRETS=true` (`allowSecrets` for `createServer` / `runHttpServer`), and never in read-only mode. Free text sent to a provider (logs, errors) has credential-shaped values masked too.
 - **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. Unlocking a door, opening a garage door or disarming an alarm only works through the destructive `set_security_accessory`, so it is confirmed too. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
 - **Tool output is treated as data.** Logs, changelogs and other Homebridge-sourced text come back wrapped in `<untrusted-data source="…">` tags (`runAgent` wraps every tool result it sends to the model), with any tag inside the data defused, and the base system prompt tells the model never to follow instructions found in tool output and to change things only when the user asked. Combined with confirmation for destructive tools, a log line saying "unlock the front door" can't open it.
-- **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default.
+- **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default. It checks `Origin`, expires idle sessions and slows down repeated bad tokens.
+- **Least privilege and an audit trail.** Extra client tokens can be limited to `read` or `control`, and every write tool call is logged with redacted arguments (see [MCP tokens](#mcp-tokens)).
 - **`update_config` rejects incomplete configs**, and regex log searches run in a worker thread that is killed after 5 seconds.
 - The server warns if `HOMEBRIDGE_URL` sends credentials over plain `http` to a non-local host.
 - **TLS verification stays on.** A self-signed Homebridge UI certificate is trusted only through `HOMEBRIDGE_CERT_FINGERPRINT` / `HOMEBRIDGE_CERT_PATH` (or the matching `mcp.http` settings), and only for the requests to the Homebridge UI; a certificate that doesn't match is refused.

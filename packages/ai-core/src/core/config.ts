@@ -32,8 +32,29 @@ export const DEFAULT_MCP_HTTP_PORT = 8582;
 export const DEFAULT_MCP_HTTP_HOST = '127.0.0.1';
 export const DEFAULT_HOMEBRIDGE_URL = 'http://127.0.0.1:8581';
 
+/** Scopes an MCP client token can have: `read` < `control` (device control) < `admin` (everything). */
+const MCP_SCOPES = ['read', 'control', 'admin'] as const;
+export type McpScope = (typeof MCP_SCOPES)[number];
+
+/** An extra bearer token for the HTTP MCP server, with its own scope. */
+export interface McpClientConfig {
+  /** Shown in the audit log. */
+  name?: string;
+  /** Secret. */
+  token: string;
+  scope: McpScope;
+}
+
 export interface McpHttpConfig {
   enabled: boolean;
+  /** Caps every client token at read-only access. */
+  readOnly?: boolean;
+  /** More client tokens besides `token`, each with a scope. */
+  clients?: McpClientConfig[];
+  /** Log write tool calls to a JSONL file (default true). */
+  auditLog?: boolean;
+  /** Where; default `<Homebridge storage>/homebridge-ai-kit-audit.jsonl`. */
+  auditLogPath?: string;
   host: string;
   port: number;
   /** Bearer token MCP clients must send. Secret. */
@@ -80,6 +101,27 @@ function strList(v: unknown): string[] | undefined {
   return out.length ? out : undefined;
 }
 
+/** `mcp.http.clients`: rows without a token are skipped (an empty form row); an unknown scope throws. */
+function mcpClients(v: unknown): McpClientConfig[] | undefined {
+  if (!Array.isArray(v)) {
+    return undefined;
+  }
+  const out: McpClientConfig[] = [];
+  v.forEach((row, i) => {
+    const token = isObject(row) ? str(row.token) : undefined;
+    if (!isObject(row) || !token) {
+      return;
+    }
+    const scope = str(row.scope) ?? 'read';
+    if (!(MCP_SCOPES as readonly string[]).includes(scope)) {
+      throw new Error(`mcp.http.clients[${i}].scope must be one of ${MCP_SCOPES.join(', ')}, got ${JSON.stringify(row.scope)}`);
+    }
+    const name = str(row.name);
+    out.push({ ...(name ? { name } : {}), token, scope: scope as McpScope });
+  });
+  return out.length ? out : undefined;
+}
+
 function positiveInt(v: unknown, name: string): number | undefined {
   if (v === undefined || v === null || v === '') {
     return undefined;
@@ -113,6 +155,8 @@ export function resolveAiConfig(block: unknown = {}): AiConfig {
         enabled: http.enabled === true,
         host: str(http.host) ?? DEFAULT_MCP_HTTP_HOST,
         port: positiveInt(http.port, 'mcp.http.port') ?? DEFAULT_MCP_HTTP_PORT,
+        readOnly: http.readOnly === true,
+        auditLog: http.auditLog !== false,
       },
     },
   };
@@ -135,6 +179,14 @@ export function resolveAiConfig(block: unknown = {}): AiConfig {
   const allowedOrigins = strList(http.allowedOrigins);
   if (allowedOrigins) {
     config.mcp.http.allowedOrigins = allowedOrigins;
+  }
+  const clients = mcpClients(http.clients);
+  if (clients) {
+    config.mcp.http.clients = clients;
+  }
+  const auditLogPath = str(http.auditLogPath);
+  if (auditLogPath) {
+    config.mcp.http.auditLogPath = auditLogPath;
   }
   return config;
 }

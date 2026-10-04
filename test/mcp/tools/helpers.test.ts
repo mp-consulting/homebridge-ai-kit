@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { errorMessage, handle, jsonResult, pick, untrusted } from '../../../src/mcp/tools/helpers.js';
+import { describe, it, expect, vi } from 'vitest';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { createRegistrar, errorMessage, handle, jsonResult, pick, untrusted } from '../../../src/mcp/tools/helpers.js';
 
 describe('tool helpers', () => {
   it('errorMessage uses the message of an Error and stringifies anything else', () => {
@@ -34,5 +35,34 @@ describe('tool helpers', () => {
 
   it('pick copies only keys that are present', () => {
     expect(pick({ a: 1, b: undefined, c: 3 }, ['a', 'b', 'd'])).toEqual({ a: 1, b: undefined });
+  });
+});
+
+describe('createRegistrar', () => {
+  function fakeServer() {
+    const registered = new Map<string, { config: Record<string, unknown>; cb: (...args: unknown[]) => Promise<unknown> }>();
+    const server = {
+      registerTool: (name: string, config: Record<string, unknown>, cb: (...args: unknown[]) => Promise<unknown>) => registered.set(name, { config, cb }),
+      server: { getClientVersion: () => undefined },
+    } as unknown as McpServer;
+    return { server, registered };
+  }
+  const write = { readOnlyHint: false, destructiveHint: true };
+
+  it('does not send the scope to clients', () => {
+    const { server, registered } = fakeServer();
+    createRegistrar(server)('t', { title: 'T', description: 'd', annotations: write, scope: 'control' }, async () => jsonResult(1));
+    expect(registered.get('t')!.config).not.toHaveProperty('scope');
+  });
+
+  it('audits a callback that throws, then rethrows', async () => {
+    const { server, registered } = fakeServer();
+    const record = vi.fn();
+    createRegistrar(server, { audit: { record }, scope: 'control' })('t', { title: 'T', description: 'd', annotations: write, scope: 'control' }, async () => {
+      throw new Error('boom');
+    });
+    await expect(registered.get('t')!.cb({ sessionId: 's1' })).rejects.toThrow('boom');
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ tool: 't', ok: false, error: 'threw an exception', session: 's1', scope: 'control' }));
+    expect(record.mock.calls[0][0]).not.toHaveProperty('client');
   });
 });

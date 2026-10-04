@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The HTTP MCP server checks the `Origin` header**, as the MCP Streamable HTTP spec requires, so a web page can't reach it through DNS rebinding. Requests without `Origin` (desktop clients) are unaffected; browser requests must come from a loopback origin, the server's own IP address, or an origin listed in the new `allowedOrigins` option (`HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS`, plugin: `mcp.http.allowedOrigins`). Others get `403`.
 - **Repeated bad tokens are slowed down.** After 5 failed attempts from one address, the server answers `429` with `Retry-After`, doubling the wait up to 5 minutes; a correct token resets the count.
 
+### Added
+
+- **Scoped client tokens.** Besides the main client token (still full access), the HTTP MCP server takes more tokens, each `read` (read-only tools), `control` (plus `set_accessory` / `set_security_accessory`) or `admin` (everything): `clients` option, `mcp.http.clients` (`{ name, token, scope }`), or `HOMEBRIDGE_AI_MCP_TOKENS=read:abc,control:def` for the CLI. A session belongs to the token that opened it (`403` for another token). Tools declare the scope they need with a new `scope` field in their config (write tools default to `admin`); `createServer` takes `scope`.
+- **Read-only HTTP from the plugin.** `mcp.http.readOnly` caps every client token at `read`; the plugin passed no read-only setting before.
+- **Audit log of write tool calls**: one JSON object per line with time, tool, arguments (secrets redacted with `redactSecrets`), result (`ok` / `error`), MCP session, client name, token name and scope. The plugin writes it to `<Homebridge storage>/homebridge-ai-kit-audit.jsonl` by default (`mcp.http.auditLog`, `mcp.http.auditLogPath`); the CLI with `HOMEBRIDGE_AI_AUDIT_LOG=<path>`. It rotates at 5 MB, keeping three old files. `./mcp` exports `createAuditLog()`, and `createServer` / `runHttpServer` take any `audit` sink.
+- The plugin's settings page has switches for read-only and the audit log, the audit log path and the allowed browser origins (scoped tokens are edited in the JSON config).
+
 ### Changed
 
 - **HTTP sessions expire.** A session with no request for 30 minutes is closed (`sessionIdleMs`, `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES`), and at most 32 stay open (`maxSessions`, `HOMEBRIDGE_AI_MCP_MAX_SESSIONS`); the least recently used idle session makes room for a new one. Sessions with an open stream are never idle.

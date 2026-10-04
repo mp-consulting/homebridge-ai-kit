@@ -187,6 +187,59 @@ describe('runHttpServer', () => {
     await b.mcp.close();
   });
 
+  it('gives each token its scope and keeps sessions to the token that opened them', async () => {
+    const records: Array<Record<string, unknown>> = [];
+    const client = mockClient({ restartServer: vi.fn().mockResolvedValue(undefined) });
+    running = await runHttpServer({
+      port: 0,
+      token: 'admin-token',
+      clients: [{ token: 'read-token', scope: 'read', name: 'Dashboard' }, { token: 'control-token', scope: 'control' }],
+      client,
+      live: false,
+      audit: { record: (e) => void records.push(e as unknown as Record<string, unknown>) },
+    });
+    const { url } = running;
+    const connect = async (token: string) => {
+      const mcp = new Client({ name: 'test', version: '0' });
+      const transport = new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } });
+      await mcp.connect(transport);
+      const names = (await mcp.listTools()).tools.map((t) => t.name);
+      return { mcp, transport, names };
+    };
+    const reader = await connect('read-token');
+    expect(reader.names).not.toContain('set_accessory');
+    const controller = await connect('control-token');
+    expect(controller.names).toContain('set_accessory');
+    expect(controller.names).not.toContain('restart_homebridge');
+    const admin = await connect('admin-token');
+    expect(admin.names).toContain('restart_homebridge');
+
+    await admin.mcp.callTool({ name: 'restart_homebridge', arguments: {} });
+    expect(records).toEqual([expect.objectContaining({ tool: 'restart_homebridge', principal: 'default', scope: 'admin', session: admin.transport.sessionId })]);
+
+    // A read token can't ride on the admin session.
+    const hijack = await post(url, { jsonrpc: '2.0', id: 9, method: 'tools/list' }, { Authorization: 'Bearer read-token', 'mcp-session-id': admin.transport.sessionId! });
+    expect(hijack.status).toBe(403);
+    for (const c of [reader, controller, admin]) {
+      await c.mcp.close();
+    }
+  });
+
+  it('caps every token at read in read-only mode and serves with only scoped tokens', async () => {
+    running = await runHttpServer({ port: 0, clients: [{ token: 'c', scope: 'control' }], readOnly: true, client: mockClient(), live: false });
+    const mcp = new Client({ name: 'test', version: '0' });
+    await mcp.connect(new StreamableHTTPClientTransport(new URL(running.url), { requestInit: { headers: { Authorization: 'Bearer c' } } }));
+    expect((await mcp.listTools()).tools.every((t) => t.annotations?.readOnlyHint)).toBe(true);
+    await mcp.close();
+  });
+
+  it('rejects bad client tokens at startup', async () => {
+    const base = { client: mockClient(), live: false as const };
+    await expect(runHttpServer({ ...base, clients: [{ token: ' ', scope: 'read' }] })).rejects.toThrow('MCP client "client-1" has no token');
+    await expect(runHttpServer({ ...base, clients: [{ token: 'x', scope: 'root' as never, name: 'A' }] })).rejects.toThrow('MCP client "A" has an unknown scope "root"');
+    await expect(runHttpServer({ ...base, token: 'x', clients: [{ token: 'x', scope: 'read' }] })).rejects.toThrow('reuses another client');
+  });
+
   it('fails to start on a busy port', async () => {
     const first = await start();
     const port = Number(new URL(first.url).port);
