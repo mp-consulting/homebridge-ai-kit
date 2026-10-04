@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **The default Gemini model is `gemini-3.8-flash`** (was `gemini-2.5-pro`, which Google now limits to projects that already used it). Configs that name a model are unaffected.
+- `PluginUiServer.onRequest` handlers take a `PluginRequestBody` (`Record<string, unknown>`, exported from `./plugin`) instead of `any`; the routes check every field before using it. `@homebridge/plugin-ui-utils` servers still fit the type.
 
 ### Fixed
 

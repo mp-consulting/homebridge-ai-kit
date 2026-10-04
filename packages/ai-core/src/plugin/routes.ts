@@ -11,9 +11,12 @@ import { ask, explainDeviceError, generatePluginConfig } from '../features/index
 import { createProvider } from '../providers/index.js';
 import type { AiProvider } from '../providers/types.js';
 
+/** The JSON body the browser sent with `homebridge.request(path, body)`; fields are checked before use. */
+export type PluginRequestBody = Record<string, unknown>;
+
 /** The part of `@homebridge/plugin-ui-utils`' `HomebridgePluginUiServer` the routes use. */
 export interface PluginUiServer {
-  onRequest(path: string, fn: (body: any) => unknown): void; // eslint-disable-line @typescript-eslint/no-explicit-any
+  onRequest(path: string, fn: (body: PluginRequestBody) => unknown): void;
   pushEvent(event: string, data: unknown): void;
   readonly homebridgeConfigPath?: string;
 }
@@ -33,7 +36,11 @@ interface Streamable {
   requestId?: unknown;
 }
 
-function requireString(body: Record<string, unknown>, key: string): string {
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function requireString(body: PluginRequestBody, key: string): string {
   const value = body?.[key];
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`"${key}" is required`);
@@ -123,14 +130,15 @@ export function registerAiRoutes(server: PluginUiServer, options: AiRoutesOption
   server.onRequest('/ai/config', (body) =>
     streamed(body, async (onChunk) => {
       const request = requireString(body, 'request');
-      if (typeof body.schema !== 'object' || body.schema === null) {
+      const { schema, current } = body;
+      if (!isObject(schema)) {
         throw new Error('"schema" is required');
       }
       return generatePluginConfig({
         provider: await provider(),
-        schema: body.schema,
+        schema,
         request,
-        current: typeof body.current === 'object' && body.current !== null ? body.current : undefined,
+        current: isObject(current) ? current : undefined,
         pluginName: options.pluginName,
         systemContext,
         onChunk,
