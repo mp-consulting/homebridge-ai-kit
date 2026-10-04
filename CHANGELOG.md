@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **New package `@mp-consulting/homebridge-ai-core` (2.0.0, `packages/ai-core`).** The AI building blocks that don't need MCP — providers, redaction, config, prompts, tokens, `generateJson`, usage, the Assistant features and the plugin-UI routes (`registerAiRoutes`, `testAiConnection` from `./plugin`) — now ship on their own with `ajv` as the only runtime dependency. Homebridge plugins should depend on it instead of ai-kit, so they no longer install `@modelcontextprotocol/sdk`, `socket.io-client` and `zod`. Its `PluginUiServer` parameter is typed structurally, so `@homebridge/plugin-ui-utils` is not a dependency. ai-core also exports `addUsage`, `ZERO_USAGE`, `TrimOptions`, `PromptTemplate`, `McpPromptName` and the `DEFAULT_*` config constants, which ai-kit re-exports too.
 - **The Assistant (AI core, `.` export).** Provider adapters over plain `fetch` for Claude (`anthropic`, default `claude-sonnet-5-5`), OpenAI, Gemini and any OpenAI-compatible server (Ollama, LM Studio), each declaring its capabilities (tools, streaming, context size). Uniform `chat()` / `stream()` API with tool calling.
 - **Agent loop** `runAgent()`: connects a provider to the MCP tools through the MCP SDK's in-memory transport. Destructive tools are refused unless a `confirm` callback allows them; providers without tool calling get a prompt-only answer.
 - **Features:** `diagnoseLogs`, `generatePluginConfig` (schema-checked, secrets restored), `explainDeviceError`, `assessPluginUpdate` (low/medium/high risk), `suggestOrganization`, `dailyDigest`, `ask`. Inputs are redacted and trimmed to the provider's context window; all stream through `onChunk`.
@@ -29,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking for library users:** the package entry point no longer starts the server. Import `createServer` and `HomebridgeClient` from `@mp-consulting/homebridge-ai-kit/mcp`; secret redaction (`redactSecrets`, `restoreSecrets`) is exported from the main entry.
 - **`set_accessory` checks the value before sending it** against the characteristic's format, range, step, valid values and write permission, and coerces e.g. `"50"` to `50`.
 - Redaction no longer hides token *counts* such as `maxOutputTokens` or `contextTokens`.
+- **The repository is an npm workspace.** ai-kit depends on `@mp-consulting/homebridge-ai-core` `^2.0.0` and re-exports all of it from `.` and `./plugin` under the same names, so imports from ai-kit (Homebridge Glass UI) keep working. `ajv` is no longer a direct dependency of ai-kit. Root `build`, `typecheck`, `lint`, `test` and `test:coverage` cover both packages, building ai-core first.
+- **Releases publish two packages.** The publish workflow publishes ai-core first (skipped when that version is already on npm), then ai-kit. Before the first release, configure npm trusted publishing (OIDC) for the new `@mp-consulting/homebridge-ai-core` package name, and make sure ai-core is published before ai-kit.
 - **Before release:** `@mp-consulting/homebridge-ui-kit` is referenced as `file:../homebridge-ui-kit` (dev dependency, assets copied at build) until ui-kit 1.2.0 is published; change it to `^1.2.0` before releasing.
 
 ## [1.2.2] - 2026-10-03
