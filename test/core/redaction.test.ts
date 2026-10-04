@@ -97,3 +97,33 @@ describe('restoreSecrets', () => {
     }
   });
 });
+
+describe('isSecretKey / redactText', () => {
+  it('treats apiKey and tokens as secrets but not token counts', async () => {
+    const { isSecretKey } = await import('../../src/core/redaction.js');
+    expect(isSecretKey('apiKey')).toBe(true);
+    expect(isSecretKey('token')).toBe(true);
+    expect(isSecretKey('homebridgeToken')).toBe(true);
+    expect(isSecretKey('maxOutputTokens')).toBe(false);
+    expect(isSecretKey('contextTokens')).toBe(false);
+  });
+
+  it('redacts the AI Kit block', () => {
+    expect(
+      redactSecrets({ platform: 'HomebridgeAiKit', apiKey: 'sk-1', maxOutputTokens: 2048, mcp: { http: { token: 't', port: 8582 } } }),
+    ).toEqual({ platform: 'HomebridgeAiKit', apiKey: REDACTED, maxOutputTokens: 2048, mcp: { http: { token: REDACTED, port: 8582 } } });
+  });
+
+  it('redacts secrets in free text', async () => {
+    const { redactText } = await import('../../src/core/redaction.js');
+    expect(redactText('login password=hunter2 ok')).toBe(`login password=${REDACTED} ok`);
+    expect(redactText('{"apiKey": "abc123", "name": "x"}')).toBe(`{"apiKey": "${REDACTED}", "name": "x"}`);
+    expect(redactText("token: 'xyz'")).toBe(`token: '${REDACTED}'`);
+    expect(redactText('maxOutputTokens: 2048')).toBe('maxOutputTokens: 2048');
+    expect(redactText('Authorization: Bearer abcdefghijkl')).toBe(`Authorization: Bearer ${REDACTED}`);
+    expect(redactText('key sk-ant-abcdefghijklmnopqrstu end')).toBe(`key ${REDACTED} end`);
+    expect(redactText('hbg_abcdefghij and AIzaSyA1234567890123456789012345678901')).toBe(`${REDACTED} and ${REDACTED}`);
+    expect(redactText('jwt eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.SflKxwRJSMeKKF2QT4')).toBe(`jwt ${REDACTED}`);
+    expect(redactText('nothing here')).toBe('nothing here');
+  });
+});
