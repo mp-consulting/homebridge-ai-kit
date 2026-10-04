@@ -7,6 +7,7 @@ import { generateJson, normalizePluginSchema } from '../core/json.js';
 import { PROMPTS } from '../core/prompts.js';
 import { SecretRestoreError, containsRedacted, redactSecrets, redactText, restoreSecrets } from '../core/redaction.js';
 import { estimateTokens, inputBudget, trimToContext } from '../core/tokens.js';
+import { ZERO_USAGE, addUsage } from '../core/usage.js';
 import type { TokenUsage } from '../core/usage.js';
 import { complete } from '../providers/index.js';
 import type { AiProvider, ChatMessage } from '../providers/types.js';
@@ -229,29 +230,77 @@ const ORGANIZATION_SCHEMA = {
   },
 };
 
+/** Output tokens one accessory can take in the reply (room entry, rename with a short reason). */
+const TOKENS_PER_ACCESSORY = 60;
+
+/**
+ * Accessories per request, so each reply fits the output limit. A large
+ * installation in one request ran past `maxOutputTokens`, and the cut-off JSON
+ * failed validation.
+ */
+function organizationBatchSize(maxOutputTokens: number | undefined): number {
+  return Math.max(5, Math.floor(((maxOutputTokens ?? DEFAULT_OUTPUT) * 0.75) / TOKENS_PER_ACCESSORY));
+}
+
 export async function suggestOrganization(o: SuggestOrganizationOptions): Promise<OrganizationSuggestion> {
   const cap = budget(o, 32_000);
-  const { data, usage } = await generateJson<Omit<OrganizationSuggestion, 'usage'>>({
-    provider: o.provider,
-    schema: ORGANIZATION_SCHEMA,
-    system: system(PROMPTS.suggestOrganization.system, o.systemContext),
-    prompt: PROMPTS.suggestOrganization.user({
-      accessories: boundedJson(o.accessories, (cap * 3) / 4),
-      rooms: o.rooms === undefined ? undefined : boundedJson(o.rooms, cap / 4),
-    }),
-    maxOutputTokens: o.maxOutputTokens,
-    signal: o.signal,
-    onChunk: o.onChunk,
+  // HomeKit uniqueIds are long hashes: send short aliases instead (fewer tokens
+  // in the reply, nothing to mistype) and map them back afterwards.
+  const toId = new Map<string, string>();
+  const items = o.accessories.map((a) => {
+    const id = typeof a === 'object' && a !== null ? (a as { uniqueId?: unknown }).uniqueId : undefined;
+    if (typeof id !== 'string') {
+      return a;
+    }
+    const alias = `a${toId.size + 1}`;
+    toId.set(alias, id);
+    return { ...(a as object), uniqueId: alias };
   });
-  // Drop anything the model made up.
-  const known = new Set(
-    o.accessories.map((a) => (typeof a === 'object' && a !== null ? (a as { uniqueId?: unknown }).uniqueId : undefined)).filter((id) => typeof id === 'string'),
-  );
-  const real = (id: string) => known.size === 0 || known.has(id);
+  // With ids, only aliases we handed out count; without any, keep what the model says.
+  const resolve = (alias: string): string | undefined => (toId.size === 0 ? alias : toId.get(alias));
+
+  const rooms = new Map<string, string[]>();
+  const renames: OrganizationSuggestion['renames'] = [];
+  const orphans: OrganizationSuggestion['orphans'] = [];
+  let usage: TokenUsage = ZERO_USAGE;
+  const size = organizationBatchSize(o.maxOutputTokens);
+
+  for (let i = 0; i < items.length || i === 0; i += size) {
+    const { data, usage: used } = await generateJson<Omit<OrganizationSuggestion, 'usage'>>({
+      provider: o.provider,
+      schema: ORGANIZATION_SCHEMA,
+      system: system(PROMPTS.suggestOrganization.system, o.systemContext),
+      prompt: PROMPTS.suggestOrganization.user({
+        accessories: boundedJson(items.slice(i, i + size), (cap * 3) / 4),
+        rooms: o.rooms === undefined ? undefined : boundedJson(o.rooms, cap / 4),
+      }),
+      maxOutputTokens: o.maxOutputTokens,
+      signal: o.signal,
+      onChunk: o.onChunk,
+    });
+    usage = addUsage(usage, used);
+    for (const room of data.rooms) {
+      const ids = room.accessories.map(resolve).filter((id): id is string => id !== undefined);
+      rooms.set(room.name, [...(rooms.get(room.name) ?? []), ...ids]);
+    }
+    for (const rename of data.renames) {
+      const uniqueId = resolve(rename.uniqueId);
+      if (uniqueId !== undefined) {
+        renames.push({ ...rename, uniqueId });
+      }
+    }
+    for (const orphan of data.orphans) {
+      const uniqueId = resolve(orphan.uniqueId);
+      if (uniqueId !== undefined) {
+        orphans.push({ ...orphan, uniqueId });
+      }
+    }
+  }
+
   return {
-    rooms: data.rooms.map((r) => ({ name: r.name, accessories: r.accessories.filter(real) })),
-    renames: data.renames.filter((r) => real(r.uniqueId)),
-    orphans: data.orphans.filter((r) => real(r.uniqueId)),
+    rooms: [...rooms].map(([name, accessories]) => ({ name, accessories })),
+    renames,
+    orphans,
     usage,
   };
 }

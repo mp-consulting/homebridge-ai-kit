@@ -1,8 +1,8 @@
 {
   "name": "@mp-consulting/homebridge-ai-kit",
   "displayName": "Homebridge AI Kit",
-  "version": "2.0.0",
-  "description": "AI toolkit for Homebridge — an MCP server that lets AI assistants control accessories, manage plugins and monitor Homebridge, plus the shared AI building blocks used by Homebridge Glass UI and MP Consulting plugins.",
+  "version": "2.0.1",
+  "description": "AI toolkit for Homebridge \u2014 an MCP server that lets AI assistants control accessories, manage plugins and monitor Homebridge, plus the shared AI building blocks used by Homebridge Glass UI and MP Consulting plugins.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -70,7 +70,7 @@
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.2.6",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@mp-consulting/homebridge-ai-core": "^2.0.0",
+    "@mp-consulting/homebridge-ai-core": "^2.0.1",
     "socket.io-client": "^4.8.4",
     "zod": "^4.5.4"
   },

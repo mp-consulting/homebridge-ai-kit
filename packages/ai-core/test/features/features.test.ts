@@ -114,26 +114,58 @@ describe('assessPluginUpdate', () => {
 });
 
 describe('suggestOrganization', () => {
-  it('drops ids the model invented', async () => {
-    const { provider } = fakeProvider([
-      {
-        text: JSON.stringify({
-          rooms: [{ name: 'Kitchen', accessories: ['a', 'ghost'] }],
-          renames: [{ uniqueId: 'a', name: 'Kitchen Light' }, { uniqueId: 'ghost', name: 'x' }],
-          orphans: [{ uniqueId: 'b', reason: 'stale' }, { uniqueId: 'ghost', reason: 'x' }],
-        }),
-      },
+  const reply = (data: unknown) => ({ text: JSON.stringify(data) });
+
+  it('sends short aliases, maps them back and drops ids the model invented', async () => {
+    const { provider, requests } = fakeProvider([
+      reply({
+        rooms: [{ name: 'Kitchen', accessories: ['a1', 'ghost'] }],
+        renames: [{ uniqueId: 'a1', name: 'Kitchen Light' }, { uniqueId: 'ghost', name: 'x' }],
+        orphans: [{ uniqueId: 'a2', reason: 'stale' }, { uniqueId: 'ghost', reason: 'x' }],
+      }),
     ]);
-    const result = await suggestOrganization({ provider, accessories: [{ uniqueId: 'a' }, { uniqueId: 'b' }, 'junk'], rooms: [{ name: 'Default Room' }] });
-    expect(result.rooms).toEqual([{ name: 'Kitchen', accessories: ['a'] }]);
-    expect(result.renames).toEqual([{ uniqueId: 'a', name: 'Kitchen Light' }]);
+    const long = 'f'.repeat(64);
+    const result = await suggestOrganization({ provider, accessories: [{ uniqueId: long }, { uniqueId: 'b' }, 'junk'], rooms: [{ name: 'Default Room' }] });
+    expect(userText(requests[0])).not.toContain(long);
+    expect(userText(requests[0])).toContain('"uniqueId": "a1"');
+    expect(result.rooms).toEqual([{ name: 'Kitchen', accessories: [long] }]);
+    expect(result.renames).toEqual([{ uniqueId: long, name: 'Kitchen Light' }]);
     expect(result.orphans).toEqual([{ uniqueId: 'b', reason: 'stale' }]);
   });
 
   it('keeps everything when the input has no ids', async () => {
-    const { provider } = fakeProvider([{ text: JSON.stringify({ rooms: [{ name: 'R', accessories: ['x'] }], renames: [], orphans: [] }) }]);
+    const { provider } = fakeProvider([reply({ rooms: [{ name: 'R', accessories: ['x'] }], renames: [], orphans: [] })]);
     const result = await suggestOrganization({ provider, accessories: [{ name: 'no id' }] });
     expect(result.rooms[0].accessories).toEqual(['x']);
+  });
+
+  it('splits a large installation into requests that fit the output limit and merges them', async () => {
+    const accessories = Array.from({ length: 12 }, (_, i) => ({ uniqueId: `id-${i}`, name: `Switch ${i}` }));
+    const { provider, requests } = fakeProvider([
+      reply({ rooms: [{ name: 'Kitchen', accessories: ['a1', 'a2'] }], renames: [{ uniqueId: 'a1', name: 'Kitchen Light' }], orphans: [] }),
+      reply({ rooms: [{ name: 'Kitchen', accessories: ['a6'] }, { name: 'Hall', accessories: ['a7'] }], renames: [], orphans: [] }),
+      reply({ rooms: [{ name: 'Hall', accessories: ['a11'] }], renames: [], orphans: [{ uniqueId: 'a12', reason: 'duplicate' }] }),
+    ]);
+    // 400 output tokens leave room for 5 accessories per request
+    const result = await suggestOrganization({ provider, accessories, maxOutputTokens: 400 });
+    expect(requests).toHaveLength(3);
+    expect(userText(requests[0])).toContain('"a5"');
+    expect(userText(requests[0])).not.toContain('"a6"');
+    expect(userText(requests[2])).toContain('"a11"');
+    expect(result.rooms).toEqual([
+      { name: 'Kitchen', accessories: ['id-0', 'id-1', 'id-5'] },
+      { name: 'Hall', accessories: ['id-6', 'id-10'] },
+    ]);
+    expect(result.renames).toEqual([{ uniqueId: 'id-0', name: 'Kitchen Light' }]);
+    expect(result.orphans).toEqual([{ uniqueId: 'id-11', reason: 'duplicate' }]);
+    expect(result.usage).toEqual({ inputTokens: 30, outputTokens: 15 });
+  });
+
+  it('still asks once when there are no accessories', async () => {
+    const { provider, requests } = fakeProvider([reply({ rooms: [], renames: [], orphans: [] })]);
+    const result = await suggestOrganization({ provider, accessories: [] });
+    expect(requests).toHaveLength(1);
+    expect(result.rooms).toEqual([]);
   });
 });
 

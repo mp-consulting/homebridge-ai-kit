@@ -86,6 +86,12 @@ export async function generateJson<T = unknown>(options: GenerateJsonOptions): P
     } catch (error) {
       errors = [(error as Error).message];
     }
+    // A reply cut off at the output limit cannot be repaired by asking again:
+    // the retry would hit the same limit.
+    if (result.stopReason === 'max_tokens') {
+      const limit = options.maxOutputTokens === undefined ? 'its output limit' : `the ${options.maxOutputTokens}-token output limit`;
+      throw new JsonGenerationError(`The answer was cut off at ${limit}. Raise the maximum answer length, or ask for less at once.`, text, errors);
+    }
     messages.push({ role: 'assistant', content: text || '(empty reply)' }, { role: 'user', content: PROMPTS.repairJson(errors.join('; ')) });
   }
   throw new JsonGenerationError(`The model did not return valid JSON: ${errors.join('; ')}`, text, errors);

@@ -78,7 +78,8 @@ export const PROMPTS = {
   suggestOrganization: {
     system: `${BASE} You organise Homebridge accessories into rooms and give them clear names. Only use the uniqueId values you are given.`,
     user: ({ accessories, rooms }: { accessories: unknown; rooms?: unknown }) =>
-      'Suggest rooms and clearer names for these accessories, and list orphans (accessories that look stale, duplicated or unassignable).' +
+      'Suggest rooms and clearer names for these accessories, and list orphans (accessories that look stale, duplicated or unassignable). ' +
+      'Only list renames that improve a name, and keep every reason under ten words.' +
       '\n\nReply with a JSON object {"rooms": [{"name": "...", "accessories": ["<uniqueId>"]}], ' +
       '"renames": [{"uniqueId": "...", "name": "...", "reason": "..."}], "orphans": [{"uniqueId": "...", "reason": "..."}]}.' +
       section('Accessories', json(accessories)) +
