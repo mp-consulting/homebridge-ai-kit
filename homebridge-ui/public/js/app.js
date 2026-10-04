@@ -33,16 +33,23 @@
     return obj;
   }
 
-  /** The block as edited in the form. */
+  /**
+   * The block as edited in the form. Fields the form doesn't show (e.g. the
+   * `homebridgeTokenId` Glass UI stores to revoke its API token) are kept.
+   */
   function readForm() {
-    const http = clean({
+    const mcp = Object.assign({}, block.mcp);
+    const http = clean(Object.assign({}, mcp.http, {
       enabled: $('http-enabled').checked,
       host: $('http-host').value.trim(),
       port: num($('http-port').value),
       token: $('http-token').value.trim(),
       homebridgeUrl: $('http-hb-url').value.trim(),
       homebridgeToken: $('http-hb-token').value.trim(),
-    });
+      homebridgeCertFingerprint: $('http-hb-cert-fingerprint').value.trim(),
+      homebridgeCertPath: $('http-hb-cert-path').value.trim(),
+    }));
+    mcp.http = http;
     const provider = $('provider').value;
     return clean(Object.assign({}, block, {
       platform: PLATFORM,
@@ -53,7 +60,7 @@
       baseUrl: provider === 'openai-compatible' ? $('baseUrl').value.trim() : undefined,
       contextTokens: provider === 'openai-compatible' ? num($('contextTokens').value) : undefined,
       maxOutputTokens: num($('maxOutputTokens').value),
-      mcp: { http: http },
+      mcp: mcp,
     }));
   }
 
@@ -72,6 +79,8 @@
     $('http-token').value = http.token || '';
     $('http-hb-url').value = http.homebridgeUrl || '';
     $('http-hb-token').value = http.homebridgeToken || '';
+    $('http-hb-cert-fingerprint').value = http.homebridgeCertFingerprint || '';
+    $('http-hb-cert-path').value = http.homebridgeCertPath || '';
   }
 
   function refreshVisibility() {

@@ -121,6 +121,27 @@
                 "x-sensitive": true,
                 "description": "An API token from Homebridge Glass UI (Settings, API tokens) the MCP tools act with. Use a read-only token to block changes.",
                 "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "homebridgeTokenId": {
+                "title": "Homebridge API token id",
+                "type": "string",
+                "readonly": true,
+                "description": "Set by Homebridge Glass UI when it creates the API token above, so it can revoke that token when you replace or remove it. Leave it as is.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled && !!model.mcp.http.homebridgeTokenId;" }
+              },
+              "homebridgeCertFingerprint": {
+                "title": "Trusted certificate fingerprint (SHA-256)",
+                "type": "string",
+                "placeholder": "AB:CD:EF:…",
+                "description": "For a Homebridge UI served over HTTPS with a self-signed certificate: the certificate's SHA-256 fingerprint (openssl x509 -noout -fingerprint -sha256 -in cert.pem). Only that exact certificate is trusted; any other is refused.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "homebridgeCertPath": {
+                "title": "Trusted certificate file (PEM)",
+                "type": "string",
+                "placeholder": "/var/lib/homebridge/ssl-certs/certificate.pem",
+                "description": "Alternatively, a PEM file with the Homebridge UI's own certificate or the CA that issued it. It is trusted in addition to the public certificate authorities.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
               }
             }
           }

@@ -135,6 +135,18 @@
               <div class="form-text">Create one in Glass UI. A read-only token blocks changes.</div>
             </div>
           </div>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label mp-label" for="http-hb-cert-fingerprint">Trusted certificate fingerprint</label>
+              <input class="form-control font-monospace" id="http-hb-cert-fingerprint" placeholder="AB:CD:EF:…" autocomplete="off" spellcheck="false">
+              <div class="form-text">For an https Homebridge UI with a self-signed certificate: its SHA-256 fingerprint. Only that certificate is trusted.</div>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label mp-label" for="http-hb-cert-path">Trusted certificate file</label>
+              <input class="form-control" id="http-hb-cert-path" placeholder="/var/lib/homebridge/ssl-certs/certificate.pem" spellcheck="false">
+              <div class="form-text">Or a PEM file with the UI's certificate or its CA.</div>
+            </div>
+          </div>
         </div>
 
         <ul class="nav nav-tabs mp-tabs" role="tablist">

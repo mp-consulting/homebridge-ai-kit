@@ -19,6 +19,7 @@ const CLIENT_METHODS = [
   'getAccessories',
   'getAccessory',
   'getAccessoryLayout',
+  'getAccessoryHistory',
   'setAccessoryCharacteristic',
   'getHomebridgeStatus',
   'getServerInformation',

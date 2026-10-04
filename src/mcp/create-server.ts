@@ -4,6 +4,7 @@ import type { HomebridgeClient } from './homebridge-client.js';
 import type { RegisterTools } from './types.js';
 import { createRegistrar } from './tools/helpers.js';
 import { register as registerAccessories } from './tools/accessories.js';
+import { register as registerHistory } from './tools/history.js';
 import { register as registerServer } from './tools/server.js';
 import { register as registerConfig } from './tools/config.js';
 import { register as registerPlugins } from './tools/plugins.js';
@@ -23,6 +24,7 @@ export const VERSION = version;
 
 const TOOL_GROUPS: RegisterTools[] = [
   registerAccessories,
+  registerHistory,
   registerServer,
   registerConfig,
   registerPlugins,

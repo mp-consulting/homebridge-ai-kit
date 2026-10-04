@@ -19,6 +19,21 @@ export interface Accessory {
   values?: Record<string, unknown>;
 }
 
+/** `GET /api/accessories/:uniqueId/history` (Glass UI). Times are epoch ms. */
+export interface AccessoryHistory {
+  uniqueId: string;
+  from: number;
+  to: number;
+  series: Array<{
+    /** Characteristic type, e.g. `CurrentTemperature`. */
+    type: string;
+    description?: string;
+    unit?: string;
+    /** `[epoch ms, value]`, oldest first, averaged down to at most `maxPoints`. */
+    points: Array<[number, number]>;
+  }>;
+}
+
 export interface Room {
   name: string;
   services: Array<{ uniqueId: string; customName?: string }>;

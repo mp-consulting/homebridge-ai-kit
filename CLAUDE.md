@@ -11,7 +11,7 @@ The repo is an npm workspace with two packages: the root is ai-kit, and `package
 - **Language:** TypeScript (strict mode, ES2022, ESM via NodeNext)
 - **Runtime:** Node.js `^22.10.0 || ^24.0.0 || ^26.0.0`
 - **MCP SDK:** `@modelcontextprotocol/sdk`
-- **JSON Schema validation:** ajv · **Live updates:** socket.io-client · **Plugin UI:** `@homebridge/plugin-ui-utils`, `@mp-consulting/homebridge-ui-kit`
+- **JSON Schema validation:** ajv · **Live updates:** socket.io-client · **TLS pinning:** undici · **Plugin UI:** `@homebridge/plugin-ui-utils`, `@mp-consulting/homebridge-ui-kit`
 - **Validation:** Zod
 - **Test framework:** Vitest
 - **Build:** `tsc` (output to `dist/`)
@@ -59,6 +59,7 @@ src/                             # ai-kit; imports ai-core as `@mp-consulting/ho
     ├── http.ts                  # runHttpServer() — Streamable HTTP, bearer token, per-session servers
     ├── create-server.ts         # createServer(client, { readOnly, live }) — tools, resources, prompts
     ├── homebridge-client.ts     # HTTP client for the Homebridge UI REST API (login, API token or getToken)
+    ├── tls.ts                   # createTrustedFetch() — undici fetch trusting a pinned fingerprint / PEM (self-signed https UI)
     ├── live.ts                  # createLiveSource() — socket.io change feed with polling fallback
     ├── resources.ts             # homebridge:// resources + resources/subscribe
     ├── prompts.ts               # MCP prompts (text from ai-core's PROMPTS)
@@ -67,6 +68,7 @@ src/                             # ai-kit; imports ai-core as `@mp-consulting/ho
     └── tools/
         ├── helpers.ts           # registrar (read-only filter), result helpers, handle(), pick()
         ├── accessories.ts       # list, get, set (value checked vs metadata), room layout
+        ├── history.ts           # get_accessory_history — Glass UI sensor history, summarized + downsampled
         ├── server.ts            # status, restart, pairing, cached accessories
         ├── child-bridges.ts     # list / restart / stop / start child bridges
         ├── config.ts            # get / update / patch config.json
@@ -112,12 +114,16 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 - `HOMEBRIDGE_AI_MCP_TOKEN` — bearer token required by `mcp --http`
 - `HOMEBRIDGE_READ_ONLY` — optional; `true` registers only read-only tools
 - `HOMEBRIDGE_TIMEOUT_MS` — optional; request timeout (default 30000)
+- `HOMEBRIDGE_CERT_FINGERPRINT` — optional; SHA-256 fingerprint of an https Homebridge UI's (self-signed) certificate to trust, pinned (plugin: `mcp.http.homebridgeCertFingerprint`)
+- `HOMEBRIDGE_CERT_PATH` — optional; PEM with the https Homebridge UI's certificate or CA to trust (plugin: `mcp.http.homebridgeCertPath`)
 
 ## Key Conventions
 
 - All API calls go through `HomebridgeClient.fetchAuthed()` / `request()`, which handle auth, retries and timeouts.
 - Tool inputs are validated with Zod schemas in each tool's `inputSchema`. Validation runs inside `McpServer`, so test it through `createServer` (see `test/mcp/create-server.test.ts`), not by calling handlers directly.
 - Never put user-supplied regexes on the main thread; use `regexSearch()`.
+- Never disable TLS verification (`NODE_TLS_REJECT_UNAUTHORIZED`, `rejectUnauthorized: false` on a shared agent). Trust a self-signed Homebridge UI through `createTrustedFetch()`, which only HomebridgeClient uses.
+- Every field the code reads from the `HomebridgeAiKit` block must be in `config.schema.json` (the Homebridge UI drops unknown fields when it saves the form; `test/plugin/config-schema.test.ts` checks it), and the custom settings page must keep fields it doesn't show.
 - Anything that returns `config.json` must go through `redactSecrets()` unless the caller explicitly asked for secrets.
 - Room filtering in `list_accessories` uses the Homebridge UI layout (`/api/accessories/layout`), not HomeKit rooms.
 - Tests use `vi.fn()`, `vi.stubGlobal()` and `vi.stubEnv()` for mocking — no real API or LLM calls in tests (providers are tested with a stubbed `fetch`). Use `mockClient()` / `collectHandlers()` from `test/mcp/helpers.ts`.

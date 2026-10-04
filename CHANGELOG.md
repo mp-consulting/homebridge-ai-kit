@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **New MCP tool `get_accessory_history`** (read-only): an accessory's recorded sensor values (temperature, humidity, light level, battery, air quality, power, energy) from Homebridge Glass UI's `GET /api/accessories/:uniqueId/history`. Takes `uniqueId`, `hours` (default 24, up to 8760), an optional characteristic `type` and `maxPoints` (default 48, 2–500). Each series comes back with `count`, `min` / `max` with when they happened, the time-weighted `avg`, `last` and the points averaged down to `maxPoints`, times in UTC, so a model can answer "why was the living room cold last night" in one call. The summary is computed from every recorded value, not the downsampled points. 32 tools in all.
+- **Trust a Homebridge UI served over HTTPS with a self-signed certificate** without turning verification off: `HOMEBRIDGE_CERT_FINGERPRINT` (plugin: `mcp.http.homebridgeCertFingerprint`) pins the certificate by its SHA-256 fingerprint, and `HOMEBRIDGE_CERT_PATH` (plugin: `mcp.http.homebridgeCertPath`) trusts the certificate or CA in a PEM file on top of the public roots. Only the MCP server's requests to the Homebridge UI are affected (an undici `Agent` used by `HomebridgeClient`, like Glass UI's own loopback fetch); a certificate that doesn't match is refused with an error naming both fingerprints. `HomebridgeClient` takes the same as `certFingerprint` / `certPath` options, and `./mcp` exports `createTrustedFetch()`. New runtime dependency: `undici` ^7.30.0.
+- The settings page has fields for both certificate settings.
+
+### Fixed
+
+- **Saving the plugin's settings dropped fields Glass UI writes.** `config.schema.json` now declares `mcp.http.homebridgeTokenId` (the id of the API token Glass UI created for the MCP server, which it needs to revoke that token) and the new certificate settings, so the Homebridge UI keeps them; a test checks that every field the code reads is in the schema. The custom settings page now merges its form into the stored `mcp` / `mcp.http` blocks instead of replacing them, so fields it doesn't show survive a save.
+- When the HTTP MCP server can't start, the plugin only suggests setting a Homebridge API token when credentials are what's missing.
+
 ### Documentation
 
 - New **MCP tokens** section in the README: what the client token and the Homebridge API token are for, and where to set or generate them (Glass UI's *Settings → Assistant → MCP server*, this plugin's settings page, or the CLI's environment variables).
