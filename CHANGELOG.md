@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Documentation
+
+- New **MCP tokens** section in the README: what the client token and the Homebridge API token are for, and where to set or generate them (Glass UI's *Settings → Assistant → MCP server*, this plugin's settings page, or the CLI's environment variables).
+
 ## [2.0.2] - 2026-10-04
 
 2.0.1 was tagged but never published (its publish run failed on a lint error); 2.0.2 contains its fixes.
