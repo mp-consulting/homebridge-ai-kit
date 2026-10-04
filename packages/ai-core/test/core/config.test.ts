@@ -35,7 +35,7 @@ describe('resolveAiConfig', () => {
       baseUrl: 'http://lm:1234/v1/',
       maxOutputTokens: '512',
       contextTokens: 32768,
-      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: ' AB:CD ', homebridgeCertPath: '/certs/hb.pem' } },
+      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: ' AB:CD ', homebridgeCertPath: '/certs/hb.pem', allowedOrigins: [' https://a.example ', '', 3] } },
     });
     expect(config).toMatchObject({
       name: 'Mine',
@@ -45,8 +45,9 @@ describe('resolveAiConfig', () => {
       baseUrl: 'http://lm:1234/v1',
       maxOutputTokens: 512,
       contextTokens: 32768,
-      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: 'AB:CD', homebridgeCertPath: '/certs/hb.pem' } },
+      mcp: { http: { enabled: true, host: '0.0.0.0', port: 9000, token: 't', homebridgeUrl: 'https://hb:8581', homebridgeToken: 'hbg_x', homebridgeCertFingerprint: 'AB:CD', homebridgeCertPath: '/certs/hb.pem', allowedOrigins: ['https://a.example'] } },
     });
+    expect(resolveAiConfig({ mcp: { http: { allowedOrigins: 'https://a.example, http://b' } } }).mcp.http.allowedOrigins).toEqual(['https://a.example', 'http://b']);
   });
 
   it('ignores empty optional strings', () => {
@@ -54,6 +55,8 @@ describe('resolveAiConfig', () => {
     expect(config.apiKey).toBeUndefined();
     expect(config.baseUrl).toBeUndefined();
     expect(config.mcp.http.token).toBeUndefined();
+    expect(resolveAiConfig({ mcp: { http: { allowedOrigins: [] } } }).mcp.http.allowedOrigins).toBeUndefined();
+    expect(resolveAiConfig({ mcp: { http: { allowedOrigins: 7 } } }).mcp.http.allowedOrigins).toBeUndefined();
   });
 
   it('rejects unknown providers and bad numbers', () => {

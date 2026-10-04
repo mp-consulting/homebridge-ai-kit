@@ -169,6 +169,9 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 | `HOMEBRIDGE_CERT_FINGERPRINT` | SHA-256 fingerprint of an `https` Homebridge UI's self-signed certificate to trust (pinned). See [self-signed certificates](#homebridge-ui-over-https-with-a-self-signed-certificate) |
 | `HOMEBRIDGE_CERT_PATH` | PEM file with the `https` Homebridge UI's certificate or its CA to trust |
 | `HOMEBRIDGE_AI_MCP_TOKEN` | Bearer token required by `--http` |
+| `HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS` | `--http`: comma-separated browser origins allowed besides loopback and the server's own IP (`*` for any) |
+| `HOMEBRIDGE_AI_MCP_MAX_SESSIONS` | `--http`: most concurrent sessions (default `32`; the least recently used idle one is closed to make room) |
+| `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES` | `--http`: close a session after this long without a request (default `30`) |
 
 ### stdio (Claude Desktop, Claude Code, Cursor)
 
@@ -200,6 +203,10 @@ homebridge-ai-kit mcp --http --port 8582 --host 127.0.0.1
 ```
 
 The endpoint is `http://127.0.0.1:8582/mcp`. Every request needs `Authorization: Bearer <HOMEBRIDGE_AI_MCP_TOKEN>`. It binds to `127.0.0.1` by default; only use `--host 0.0.0.0` on a trusted network, ideally behind HTTPS.
+
+- **Origin check.** As the MCP spec requires, a request with an `Origin` header (i.e. from a web page) is refused with `403` unless the origin is a loopback one (`http://localhost:…`, `127.0.0.1`, `[::1]`), the server's own IP address, or listed in `HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS` (plugin: `mcp.http.allowedOrigins`). This stops a malicious page from reaching the server through DNS rebinding. Desktop clients send no `Origin` and are unaffected.
+- **Sessions** close after 30 idle minutes, and at most 32 stay open. Sessions with an open stream are never idle. All sessions share one Homebridge change feed for `resources/subscribe`.
+- **Bad tokens.** After 5 wrong tokens from one address, it must wait before trying again (`429` with `Retry-After`, doubling up to 5 minutes); a correct token resets the count.
 
 ```bash
 claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "Authorization: Bearer <token>"

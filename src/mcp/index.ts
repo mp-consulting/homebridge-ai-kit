@@ -5,7 +5,7 @@ export type { HomebridgeClientOptions, LogTail } from './homebridge-client.js';
 export { runHttpFromEnv, runStdioServer } from './stdio.js';
 export { MCP_PATH, runHttpServer } from './http.js';
 export type { HttpServerOptions, RunningHttpServer } from './http.js';
-export { LIVE_TOPICS, createLiveSource } from './live.js';
+export { LIVE_TOPICS, createLiveSource, shareLiveSource } from './live.js';
 export type { LiveOptions, LiveSource, LiveTopic, LiveWatch } from './live.js';
 export { RESOURCE_URIS } from './resources.js';
 export { createTrustedFetch } from './tls.js';

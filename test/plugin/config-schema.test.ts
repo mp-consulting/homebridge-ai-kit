@@ -28,6 +28,7 @@ const FULL_BLOCK = {
       homebridgeToken: 'hbg_x',
       homebridgeCertFingerprint: 'AB:CD',
       homebridgeCertPath: '/certs/ui.pem',
+      allowedOrigins: ['https://dash.local'],
     },
   },
 };
