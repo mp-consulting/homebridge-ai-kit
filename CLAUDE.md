@@ -113,6 +113,7 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 - `HOMEBRIDGE_PASSWORD` — login password
 - `HOMEBRIDGE_AI_MCP_TOKEN` — bearer token required by `mcp --http`
 - `HOMEBRIDGE_READ_ONLY` — optional; `true` registers only read-only tools
+- `HOMEBRIDGE_ALLOW_SECRETS` — optional; `true` lets `get_config` return real secrets (`includeSecrets`), never in read-only mode
 - `HOMEBRIDGE_TIMEOUT_MS` — optional; request timeout (default 30000)
 - `HOMEBRIDGE_CERT_FINGERPRINT` — optional; SHA-256 fingerprint of an https Homebridge UI's (self-signed) certificate to trust, pinned (plugin: `mcp.http.homebridgeCertFingerprint`)
 - `HOMEBRIDGE_CERT_PATH` — optional; PEM with the https Homebridge UI's certificate or CA to trust (plugin: `mcp.http.homebridgeCertPath`)

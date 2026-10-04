@@ -42,13 +42,19 @@ export interface ServerOptions {
    * fallback ({@link createLiveSource}); `false` disables subscriptions.
    */
   live?: LiveSource | false;
+  /**
+   * Let `get_config` return real secrets when asked (`includeSecrets`). Off by
+   * default (env: `HOMEBRIDGE_ALLOW_SECRETS`) and always off in read-only mode.
+   */
+  allowSecrets?: boolean;
 }
 
 export function createServer(client: HomebridgeClient, options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: 'homebridge-ai-kit', version: VERSION });
   const tool = createRegistrar(server, options);
+  const toolOptions = { allowSecrets: options.allowSecrets === true && !options.readOnly };
   for (const register of TOOL_GROUPS) {
-    register(tool, client);
+    register(tool, client, toolOptions);
   }
   registerResources(server, client, options.live ?? createLiveSource(client));
   registerPrompts(server);

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { register } from '../../../src/mcp/tools/config.js';
 import { REDACTED } from '@mp-consulting/homebridge-ai-core';
-import { collectHandlers, mockClient } from '../helpers.js';
+import { collectHandlers, collectTools, mockClient } from '../helpers.js';
 
 const realConfig = {
   bridge: { name: 'Homebridge', username: '0E:00:00:00:00:01', port: 51826, pin: '031-45-154' },
@@ -11,13 +11,13 @@ const realConfig = {
   ],
 };
 
-function handlersFor(overrides: Parameters<typeof mockClient>[0] = {}) {
+function handlersFor(overrides: Parameters<typeof mockClient>[0] = {}, allowSecrets = false) {
   const client = mockClient({
     getConfig: vi.fn().mockResolvedValue(structuredClone(realConfig)),
     updateConfig: vi.fn().mockResolvedValue(null),
     ...overrides,
   });
-  return { client, handlers: collectHandlers(register, client) };
+  return { client, handlers: collectHandlers(register, client, { allowSecrets }) };
 }
 
 describe('config tools', () => {
@@ -33,10 +33,21 @@ describe('config tools', () => {
       expect(result.content[0].text).not.toContain('hue-key');
     });
 
-    it('returns real values when includeSecrets is set', async () => {
-      const { handlers } = handlersFor();
+    it('returns real values when includeSecrets is set and the server allows it', async () => {
+      const { handlers } = handlersFor({}, true);
       const result = await handlers.get('get_config')!({ includeSecrets: true });
       expect(JSON.parse(result.content[0].text)).toEqual(realConfig);
+    });
+
+    it('keeps secrets redacted unless the server allows them', async () => {
+      const client = mockClient({ getConfig: vi.fn().mockResolvedValue(structuredClone(realConfig)) });
+      const tools = collectTools(register, client);
+      const getConfig = tools.get('get_config')!;
+      expect(getConfig.config.inputSchema).toEqual({});
+      expect(getConfig.config.description).toContain('never returns the real secret values');
+      const result = await getConfig.handler({ includeSecrets: true });
+      expect(result.content[0].text).not.toContain('hue-key');
+      expect(collectTools(register, client, { allowSecrets: true }).get('get_config')!.config.inputSchema).toHaveProperty('includeSecrets');
     });
 
     it('handles errors', async () => {

@@ -39,6 +39,8 @@ export interface HttpServerOptions {
   token: string;
   client: HomebridgeClient;
   readOnly?: boolean;
+  /** Let `get_config` return real secrets when asked; ignored in read-only mode. */
+  allowSecrets?: boolean;
   /** Change feed for `resources/subscribe`, shared by every session. Default: {@link createLiveSource}. */
   live?: LiveSource | false;
   /**
@@ -276,7 +278,7 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
         },
       });
       session.transport = transport;
-      const server = createServer(client, { readOnly: options.readOnly, live });
+      const server = createServer(client, { readOnly: options.readOnly, allowSecrets: options.allowSecrets, live });
       transport.onclose = () => {
         if (transport.sessionId && sessions.get(transport.sessionId) === session) {
           sessions.delete(transport.sessionId);

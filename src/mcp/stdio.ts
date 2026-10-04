@@ -42,8 +42,14 @@ export function httpOptionsFromEnv(env: Env = process.env): Omit<HttpServerOptio
   return options;
 }
 
+/** `readOnly` / `allowSecrets` from HOMEBRIDGE_READ_ONLY / HOMEBRIDGE_ALLOW_SECRETS (secrets never in read-only mode). */
+export function serverOptionsFromEnv(env: Env = process.env): { readOnly: boolean; allowSecrets: boolean } {
+  const readOnly = envFlag(env.HOMEBRIDGE_READ_ONLY);
+  return { readOnly, allowSecrets: !readOnly && envFlag(env.HOMEBRIDGE_ALLOW_SECRETS) };
+}
+
 /** Builds the client from HOMEBRIDGE_* env vars, exiting with a readable message on bad config. */
-function clientFromEnv(prog: string): { client: HomebridgeClient; readOnly: boolean } {
+function clientFromEnv(prog: string): { client: HomebridgeClient; readOnly: boolean; allowSecrets: boolean } {
   let client: HomebridgeClient;
   try {
     client = new HomebridgeClient();
@@ -56,11 +62,14 @@ function clientFromEnv(prog: string): { client: HomebridgeClient; readOnly: bool
     console.error(`${prog}: warning: ${client.transportWarning}`);
   }
 
-  const readOnly = envFlag(process.env.HOMEBRIDGE_READ_ONLY);
+  const { readOnly, allowSecrets } = serverOptionsFromEnv();
   if (readOnly) {
     console.error(`${prog}: read-only mode, write tools are disabled`);
   }
-  return { client, readOnly };
+  if (allowSecrets) {
+    console.error(`${prog}: warning: HOMEBRIDGE_ALLOW_SECRETS is on, get_config can return real credentials`);
+  }
+  return { client, readOnly, allowSecrets };
 }
 
 /**
@@ -69,8 +78,8 @@ function clientFromEnv(prog: string): { client: HomebridgeClient; readOnly: bool
  */
 export async function runStdioServer(prog: string): Promise<void> {
   // stdout carries the MCP protocol, so every human-facing message goes to stderr.
-  const { client, readOnly } = clientFromEnv(prog);
-  const server = createServer(client, { readOnly });
+  const { client, readOnly, allowSecrets } = clientFromEnv(prog);
+  const server = createServer(client, { readOnly, allowSecrets });
   await server.connect(new StdioServerTransport());
 }
 
@@ -87,9 +96,9 @@ export async function runHttpFromEnv(prog: string, { port, host }: { port?: numb
     console.error(`${prog}: HOMEBRIDGE_AI_MCP_TOKEN is required with --http (clients must send it as a bearer token)`);
     process.exit(1);
   }
-  const { client, readOnly } = clientFromEnv(prog);
+  const { client, readOnly, allowSecrets } = clientFromEnv(prog);
   try {
-    const running = await runHttpServer({ ...httpOptions, port, host, client, readOnly });
+    const running = await runHttpServer({ ...httpOptions, port, host, client, readOnly, allowSecrets });
     console.error(`${prog}: MCP over HTTP at ${running.url}`);
     const stop = () => {
       void running.close().then(() => process.exit(0));
