@@ -11,6 +11,14 @@ export const REDACTED = '__REDACTED__';
 /** Keys whose values are treated as secrets, e.g. password, mqttPass, apiKey, clientSecret, bridge.pin. */
 const SECRET_KEY = /pass(word|wd|phrase)?$|secret|token|api[-_]?key|private[-_]?key|credential|^pin$/i;
 
+/** Keys that look secret but hold token counts, e.g. `maxOutputTokens` or `contextTokens`. */
+const NOT_SECRET_KEY = /(max|min|context|input|output|total)\w*tokens$/i;
+
+/** Whether the value under `key` is treated as a secret. */
+export function isSecretKey(key: string): boolean {
+  return SECRET_KEY.test(key) && !NOT_SECRET_KEY.test(key);
+}
+
 /** Fields that identify an entry in an array such as `platforms` or `accessories`. */
 const IDENTITY_KEYS = ['platform', 'accessory', 'name', 'id', 'username'] as const;
 
@@ -31,7 +39,7 @@ export function redactSecrets(value: Json, underSecretKey = false): Json {
   }
   if (isPlainObject(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, v]) => [key, redactSecrets(v, underSecretKey || SECRET_KEY.test(key))]),
+      Object.entries(value).map(([key, v]) => [key, redactSecrets(v, underSecretKey || isSecretKey(key))]),
     );
   }
   return underSecretKey && isSecretValue(value) ? REDACTED : value;
@@ -107,4 +115,31 @@ export function restoreSecrets(next: Json, current: Json): Json {
     throw new SecretRestoreError(missing);
   }
   return restored;
+}
+
+/** `key: value`, `key=value` and `"key": "value"` pairs whose key names a secret. */
+const SECRET_PAIR =
+  /(["']?)([\w.-]*(?:password|passwd|passphrase|secret|token|api[-_]?key|private[-_]?key|credential)[\w-]*)\1(\s*[:=]\s*)(["']?)([^\s"',;}&]+)\4/gi;
+
+/** Well-known credential shapes that can appear anywhere in free text. */
+const SECRET_SHAPES: RegExp[] = [
+  /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g, // Authorization headers
+  /\bsk-[A-Za-z0-9_-]{16,}/g, // OpenAI / Anthropic style keys
+  /\bhbg_[A-Za-z0-9_-]{8,}/g, // Homebridge Glass UI API tokens
+  /\bAIza[0-9A-Za-z_-]{30,}/g, // Google API keys
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, // JWTs
+];
+
+/**
+ * Best-effort redaction of free text such as log lines or error messages:
+ * values of secret-named keys and well-known credential shapes become {@link REDACTED}.
+ */
+export function redactText(text: string): string {
+  let out = text.replace(SECRET_PAIR, (m, q: string, key: string, sep: string, vq: string) =>
+    NOT_SECRET_KEY.test(key) ? m : `${q}${key}${q}${sep}${vq}${REDACTED}${vq}`,
+  );
+  for (const shape of SECRET_SHAPES) {
+    out = out.replace(shape, (m) => (/^(Bearer|Basic)\s/.test(m) ? `${m.split(/\s+/)[0]} ${REDACTED}` : REDACTED));
+  }
+  return out;
 }
