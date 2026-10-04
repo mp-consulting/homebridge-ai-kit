@@ -9,6 +9,7 @@ import { mockClient } from './helpers.js';
 
 const WRITE_TOOLS = [
   'set_accessory',
+  'set_security_accessory',
   'restart_homebridge',
   'remove_cached_accessory',
   'reset_cached_accessories',
@@ -22,7 +23,7 @@ const WRITE_TOOLS = [
   'start_child_bridge',
 ];
 
-const TOOL_COUNT = 32;
+const TOOL_COUNT = 33;
 
 /** Connect a real MCP client to the server over an in-memory transport. */
 async function connect(client: HomebridgeClient = mockClient(), options: ServerOptions = {}) {
@@ -42,7 +43,7 @@ describe('createServer', () => {
     expect(mcp.getServerVersion()).toEqual({ name: 'homebridge-ai-kit', version: pkg.version });
   });
 
-  it('registers all 32 tools with titles and annotations', async () => {
+  it('registers all 33 tools with titles and annotations', async () => {
     const { tools } = await (await connect()).listTools();
 
     expect(tools).toHaveLength(TOOL_COUNT);

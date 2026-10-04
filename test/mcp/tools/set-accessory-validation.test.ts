@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { checkCharacteristicValue, register } from '../../../src/mcp/tools/accessories.js';
+import { checkCharacteristicValue, isSecurityWrite, register } from '../../../src/mcp/tools/accessories.js';
 import type { CharacteristicInfo } from '../../../src/mcp/types.js';
-import { collectHandlers, mockClient } from '../helpers.js';
+import { collectHandlers, collectTools, mockClient } from '../helpers.js';
 
 const c = (info: Partial<CharacteristicInfo>): CharacteristicInfo => ({ type: 'X', value: null, ...info });
 
@@ -76,5 +76,42 @@ describe('set_accessory validation', () => {
     });
     const result = await collectHandlers(register, client).get('set_accessory')!({ uniqueId: 's', characteristicType: 'On', value: true });
     expect(result.content[0].text).toBe('s has no characteristic "On". Writable: none.');
+  });
+});
+
+describe('security-sensitive writes', () => {
+  const lock = {
+    uniqueId: 'door',
+    serviceName: 'Front Door',
+    type: 'LockMechanism',
+    serviceCharacteristics: [{ type: 'LockTargetState', value: 1, format: 'uint8', validValues: [0, 1], canWrite: true }],
+  };
+
+  it('classifies locks, garage doors and alarms', () => {
+    expect(isSecurityWrite({ type: 'Lightbulb' }, 'On')).toBe(false);
+    expect(isSecurityWrite(undefined, 'Brightness')).toBe(false);
+    expect(isSecurityWrite({ type: 'Lightbulb' }, 'LockTargetState')).toBe(true);
+    expect(isSecurityWrite(undefined, 'target_door_state')).toBe(true);
+    expect(isSecurityWrite({ type: 'Security System' }, 'Name')).toBe(true);
+    expect(isSecurityWrite({ type: 'GarageDoorOpener' }, 'ObstructionDetected')).toBe(true);
+  });
+
+  it('set_accessory refuses them and points to set_security_accessory', async () => {
+    const client = mockClient({ getAccessory: vi.fn().mockResolvedValue(lock), setAccessoryCharacteristic: vi.fn() });
+    const result = await collectHandlers(register, client).get('set_accessory')!({ uniqueId: 'door', characteristicType: 'LockTargetState', value: 0 });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Use set_security_accessory');
+    expect(client.setAccessoryCharacteristic).not.toHaveBeenCalled();
+  });
+
+  it('set_security_accessory writes them, validated, and is destructive', async () => {
+    const client = mockClient({ getAccessory: vi.fn().mockResolvedValue(lock), setAccessoryCharacteristic: vi.fn().mockResolvedValue({ ok: 1 }) });
+    const tools = collectTools(register, client);
+    const secure = tools.get('set_security_accessory')!;
+    expect(secure.config.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(tools.get('set_accessory')!.config.annotations.destructiveHint).toBe(false);
+    expect((await secure.handler({ uniqueId: 'door', characteristicType: 'locktargetstate', value: 2 })).isError).toBe(true);
+    await secure.handler({ uniqueId: 'door', characteristicType: 'locktargetstate', value: 0 });
+    expect(client.setAccessoryCharacteristic).toHaveBeenCalledWith('door', 'LockTargetState', 0);
   });
 });

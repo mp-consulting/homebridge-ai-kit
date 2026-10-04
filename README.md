@@ -35,7 +35,7 @@ Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP
 
 ## Features
 
-**MCP tools** (32): accessories (list, get, control with value checks, room layout, sensor history), server (status, restart, pairing, cached accessories), child bridges (list, restart, stop, start), config (read with secrets redacted, full write, partial `patch_config`), plugins (list, search, versions, schema, changelog, install, update, uninstall), system info and logs (recent lines, regex search).
+**MCP tools** (33): accessories (list, get, control with value checks, locks / garage doors / alarms behind confirmation, room layout, sensor history), server (status, restart, pairing, cached accessories), child bridges (list, restart, stop, start), config (read with secrets redacted, full write, partial `patch_config`), plugins (list, search, versions, schema, changelog, install, update, uninstall), system info and logs (recent lines, regex search).
 
 **MCP resources** you can subscribe to: `homebridge://accessories`, `homebridge://logs/recent`, `homebridge://status`. Changes arrive over the Homebridge UI's socket.io namespaces, or by polling when the socket can't be used.
 
@@ -216,7 +216,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 
 | Group | Tools |
 |---|---|
-| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `get_accessory_layout`, `get_accessory_history` |
+| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `set_security_accessory`, `get_accessory_layout`, `get_accessory_history` |
 | Server | `get_homebridge_status`, `get_server_status`, `restart_homebridge`, `get_pairing_info`, `get_cached_accessories`, `remove_cached_accessory`, `reset_cached_accessories` |
 | Child bridges | `list_child_bridges`, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge` |
 | Config | `get_config`, `update_config`, `patch_config` |
@@ -225,6 +225,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 | Logs | `get_recent_logs`, `search_logs` |
 
 - `set_accessory` checks the value against the characteristic first (format, min/max, step, valid values, write permission), coerces `"50"` to `50` or `1` to `true`, and explains what is wrong instead of sending a bad value.
+- Locks, garage doors and security systems (`LockTargetState`, `TargetDoorState`, `SecuritySystemTargetState`, or any characteristic of a `LockMechanism`, `GarageDoorOpener` or `SecuritySystem` service) are refused by `set_accessory`; they go through `set_security_accessory`, which is annotated `destructiveHint: true` so MCP clients and `runAgent` ask the user before unlocking, opening or disarming anything. Lights and switches still change without a prompt.
 - `get_accessory_history` returns an accessory's recorded sensor values (temperature, humidity, light level, battery, air quality, power, energy) over the last `hours` (default 24, up to 8760), optionally for one characteristic `type`. Per series it gives `count`, `min` / `max` (value and when), the time-weighted `avg`, `last`, and the `points` averaged down to `maxPoints` (default 48, 2–500), with times in UTC to the minute. It needs Homebridge Glass UI (`GET /api/accessories/:uniqueId/history`), which records these values while Homebridge runs in insecure mode.
 - `patch_config` changes one platform or accessory block (found by `platform`/`accessory` plus `name`); objects merge, `null` removes a key, and `__REDACTED__` keeps the current secret.
 - `install_plugin`, `update_plugin` and `uninstall_plugin` start a job on the Homebridge UI and wait up to two minutes for it; `get_plugin_job` follows a longer one. They need Homebridge Glass UI (`POST /api/plugins/install|update|uninstall`, `GET /api/plugins/jobs/:id`).
@@ -274,7 +275,7 @@ Everything in this table except `runAgent` comes from `@mp-consulting/homebridge
 ## Security
 
 - **Secrets stay out of the model's context.** `get_config`, `patch_config` and the Assistant features replace passwords, tokens, API keys (including the AI Kit `apiKey` and MCP tokens) and the bridge pin with `__REDACTED__`. Writes swap the placeholders back for the real values. Free text sent to a provider (logs, errors) has credential-shaped values masked too.
-- **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
+- **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. Unlocking a door, opening a garage door or disarming an alarm only works through the destructive `set_security_accessory`, so it is confirmed too. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
 - **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default.
 - **`update_config` rejects incomplete configs**, and regex log searches run in a worker thread that is killed after 5 seconds.
 - The server warns if `HOMEBRIDGE_URL` sends credentials over plain `http` to a non-local host.

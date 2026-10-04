@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Unlocking a door now needs the user's consent.** `set_accessory` is non-destructive, so MCP clients and `runAgent` never asked before it unlocked a lock, opened a garage door or disarmed an alarm. Those writes (`LockTargetState`, `TargetDoorState`, `SecuritySystemTargetState`, and any characteristic of a `LockMechanism`, `LockManagement`, `GarageDoorOpener` or `SecuritySystem` service) now go through the new **`set_security_accessory`** tool, annotated `destructiveHint: true`, and `set_accessory` refuses them with a pointer to it. A separate tool rather than a per-call check keeps the MCP annotations truthful for every client, not just `runAgent`; light and switch writes still don't prompt. 33 tools in all.
 - **The HTTP MCP server checks the `Origin` header**, as the MCP Streamable HTTP spec requires, so a web page can't reach it through DNS rebinding. Requests without `Origin` (desktop clients) are unaffected; browser requests must come from a loopback origin, the server's own IP address, or an origin listed in the new `allowedOrigins` option (`HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS`, plugin: `mcp.http.allowedOrigins`). Others get `403`.
 - **Repeated bad tokens are slowed down.** After 5 failed attempts from one address, the server answers `429` with `Retry-After`, doubling the wait up to 5 minutes; a correct token resets the count.
 
