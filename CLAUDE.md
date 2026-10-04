@@ -4,6 +4,8 @@
 
 Homebridge AI Kit (`@mp-consulting/homebridge-ai-kit`, renamed from `homebridge-mcp-server`) — the home for all MP Consulting Homebridge AI code. It contains: a Model Context Protocol server (stdio + Streamable HTTP) that bridges AI assistants with Homebridge; the Assistant core (provider adapters over plain `fetch`, an agent loop that drives the MCP tools in-process, and ready-made features); and a Homebridge platform plugin (`HomebridgeAiKit`) with a custom settings UI. Package exports: `.` (AI core + Homebridge plugin default export), `./mcp`, `./plugin`.
 
+The repo is an npm workspace with two packages: the root is ai-kit, and `packages/ai-core` is `@mp-consulting/homebridge-ai-core` — everything that doesn't need MCP (config, redaction, prompts, tokens, json, usage, providers, features, plugin-UI routes), with `ajv` as its only runtime dependency. Homebridge plugins depend on ai-core; ai-kit depends on it (`^2.0.0`) and re-exports all of it from `.` and `./plugin`. Never import the MCP SDK, zod, socket.io-client or `@homebridge/plugin-ui-utils` from ai-core.
+
 ## Tech Stack
 
 - **Language:** TypeScript (strict mode, ES2022, ESM via NodeNext)
@@ -17,33 +19,39 @@ Homebridge AI Kit (`@mp-consulting/homebridge-ai-kit`, renamed from `homebridge-
 ## Project Structure
 
 ```
-src/
-├── index.ts                     # `.` — AI core exports + `export default` Homebridge plugin initializer
+packages/ai-core/                # @mp-consulting/homebridge-ai-core (own package.json, tsconfig, vitest config, README, CHANGELOG)
+├── src/
+│   ├── index.ts                 # `.` — config, redaction, providers, features, utilities
+│   ├── core/
+│   │   ├── config.ts            # AiConfig, resolveAiConfig(), readAiConfig() — the HomebridgeAiKit block
+│   │   ├── prompts.ts           # PROMPTS — feature templates + MCP prompt texts
+│   │   ├── json.ts              # generateJson() (ajv + one repair retry), normalizePluginSchema()
+│   │   ├── tokens.ts            # estimateTokens(), trimToContext(), inputBudget()
+│   │   ├── usage.ts             # UsageTracker, costOf(), Claude price table
+│   │   └── redaction.ts         # redact / restore secrets in config.json, redactText() for free text
+│   ├── providers/
+│   │   ├── types.ts             # AiProvider, ChatRequest/Result/Chunk, ToolDefinition, ProviderError
+│   │   ├── http.ts              # postJson(), SSE parser, shared helpers
+│   │   ├── anthropic.ts         # Messages API (tool_use, SSE, thinking blocks replayed verbatim)
+│   │   ├── openai.ts            # Chat Completions (also openai-compatible: Ollama, LM Studio)
+│   │   ├── gemini.ts            # generateContent / streamGenerateContent, functionDeclarations
+│   │   └── index.ts             # createProvider(), complete() (stream-or-chat helper)
+│   ├── features/
+│   │   └── index.ts             # diagnoseLogs, generatePluginConfig, explainDeviceError, assessPluginUpdate, …
+│   └── plugin/
+│       ├── index.ts             # `./plugin` export
+│       └── routes.ts            # registerAiRoutes() for plugin-ui-utils servers (structural type), testAiConnection()
+└── test/                        # core/, providers/ (helpers.ts: stubFetch, sseResponse, fakeProvider), features/, plugin/
+src/                             # ai-kit; imports ai-core as `@mp-consulting/homebridge-ai-core`
+├── index.ts                     # `.` — `export *` from ai-core + runAgent + `export default` Homebridge plugin initializer
 ├── bin/
 │   ├── homebridge-ai-kit.ts     # CLI — `homebridge-ai-kit mcp [--http --port --host]`
 │   └── homebridge-mcp-server.ts # Alias kept for configs written for the old package name
-├── core/
-│   ├── config.ts                # AiConfig, resolveAiConfig(), readAiConfig() — the HomebridgeAiKit block
-│   ├── prompts.ts               # PROMPTS — feature templates + MCP prompt texts
-│   ├── json.ts                  # generateJson() (ajv + one repair retry), normalizePluginSchema()
-│   ├── tokens.ts                # estimateTokens(), trimToContext(), inputBudget()
-│   ├── usage.ts                 # UsageTracker, costOf(), Claude price table
-│   └── redaction.ts             # redact / restore secrets in config.json, redactText() for free text
-├── providers/
-│   ├── types.ts                 # AiProvider, ChatRequest/Result/Chunk, ToolDefinition, ProviderError
-│   ├── http.ts                  # postJson(), SSE parser, shared helpers
-│   ├── anthropic.ts             # Messages API (tool_use, SSE, thinking blocks replayed verbatim)
-│   ├── openai.ts                # Chat Completions (also openai-compatible: Ollama, LM Studio)
-│   ├── gemini.ts                # generateContent / streamGenerateContent, functionDeclarations
-│   └── index.ts                 # createProvider(), complete() (stream-or-chat helper)
 ├── agent/
 │   └── run-agent.ts             # runAgent() — provider ↔ in-memory MCP client loop, confirm for destructive tools
-├── features/
-│   └── index.ts                 # diagnoseLogs, generatePluginConfig, explainDeviceError, assessPluginUpdate, …
 ├── plugin/
-│   ├── index.ts                 # `./plugin` export
+│   ├── index.ts                 # `./plugin` export — re-exports ai-core's routes + its own
 │   ├── platform.ts              # AiKitPlatform — logs status, optionally runs the HTTP MCP server
-│   ├── routes.ts                # registerAiRoutes() for plugin-ui-utils servers, testAiConnection()
 │   └── snippets.ts              # mcpClientSnippets() for Claude Desktop / Claude Code / Cursor
 └── mcp/
     ├── index.ts                 # `./mcp` export
@@ -53,7 +61,7 @@ src/
     ├── homebridge-client.ts     # HTTP client for the Homebridge UI REST API (login, API token or getToken)
     ├── live.ts                  # createLiveSource() — socket.io change feed with polling fallback
     ├── resources.ts             # homebridge:// resources + resources/subscribe
-    ├── prompts.ts               # MCP prompts (text from core/prompts.ts)
+    ├── prompts.ts               # MCP prompts (text from ai-core's PROMPTS)
     ├── regex-search.ts          # regex log search in a killable worker thread
     ├── types.ts                 # RegisterTools signature + Homebridge API shapes
     └── tools/
@@ -72,11 +80,12 @@ homebridge-ui/
 └── public/                      # settings page; lib/ is copied from homebridge-ui-kit at build (gitignored)
 ```
 
-Tests mirror the source structure under `test/`; shared MCP mocks live in `test/mcp/helpers.ts`, and `test/providers/helpers.ts` has `stubFetch()`, `sseResponse()` and `fakeProvider()`.
+Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/test/` (ai-core); shared MCP mocks live in `test/mcp/helpers.ts`, and `packages/ai-core/test/providers/helpers.ts` has `stubFetch()`, `sseResponse()` and `fakeProvider()`. ai-kit's vitest config aliases `@mp-consulting/homebridge-ai-core` to ai-core's sources, so its tests need no build; `tsc` (typecheck/build) uses ai-core's `dist`, so root `typecheck` and `build` build ai-core first. Both packages enforce coverage thresholds 95/90/95/95.
 
 ## Commands
 
-- `npm run build` — copy ui-kit assets into `homebridge-ui/public/lib` (`mp-ui-kit-copy --vendor`), then compile TypeScript
+- Root scripts cover both packages (ai-core first); `npm run <script> -w packages/ai-core` runs one for ai-core only.
+- `npm run build` — build ai-core, copy ui-kit assets into `homebridge-ui/public/lib` (`mp-ui-kit-copy --vendor`), then compile TypeScript
 - `npm run dev` — run the MCP server with tsx
 - `npm test` — run tests (vitest run)
 - `npm run test:watch` — run tests in watch mode

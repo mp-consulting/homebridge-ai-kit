@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RegisterTools } from '../types.js';
-import { REDACTED, containsRedacted, redactSecrets, restoreSecrets } from '../../core/redaction.js';
+import { REDACTED, containsRedacted, redactSecrets, restoreSecrets } from '@mp-consulting/homebridge-ai-core';
 import { READ, errorResult, handle, jsonResult, textResult } from './helpers.js';
 
 /**
