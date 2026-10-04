@@ -44,7 +44,7 @@ describe('HomebridgeClient', () => {
 
   async function createClient() {
     // Dynamic import so each test gets a fresh module with current env
-    const mod = await import('../src/homebridge-client.js');
+    const mod = await import('../../src/mcp/homebridge-client.js');
     return new mod.HomebridgeClient();
   }
 

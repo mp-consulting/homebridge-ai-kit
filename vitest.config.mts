@@ -13,8 +13,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // index.ts only wires env vars to createServer() and stdio, which is covered by create-server.test.ts.
-      exclude: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**', 'src/index.ts'],
+      // bin/ and stdio.ts only wire env vars to createServer() and stdio, which is covered by create-server.test.ts.
+      exclude: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**', 'src/bin/**', 'src/mcp/stdio.ts'],
       thresholds: {
         statements: 95,
         branches: 90,

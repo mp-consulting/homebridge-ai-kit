@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - Unreleased
+
+### Changed
+
+- **Renamed to `@mp-consulting/homebridge-ai-kit`** (was `@mp-consulting/homebridge-mcp-server`). The package becomes the home for all AI features shared by Homebridge Glass UI and the MP Consulting plugins; the MCP server is its first part.
+- **New command: `homebridge-ai-kit mcp`.** The `homebridge-mcp-server` command is kept as an alias, and the environment variables are unchanged, so existing MCP client configs keep working.
+- **The MCP server reports its name as `homebridge-ai-kit`** instead of `homebridge-mcp-server`. Clients that match on the server name need updating.
+- **Breaking for library users:** the package entry point no longer starts the server. Import `createServer` and `HomebridgeClient` from `@mp-consulting/homebridge-ai-kit/mcp`; secret redaction (`redactSecrets`, `restoreSecrets`) is exported from the main entry.
+
 ## [1.2.2] - 2026-10-03
 
 ### Changed

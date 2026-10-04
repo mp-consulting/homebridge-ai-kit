@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Homebridge MCP Server — a Model Context Protocol server that bridges AI assistants (Claude) with Homebridge to control smart home accessories, manage plugins, and monitor the Homebridge instance.
+Homebridge AI Kit (`@mp-consulting/homebridge-ai-kit`, renamed from `homebridge-mcp-server`) — the home for all MP Consulting Homebridge AI code. Today it is a Model Context Protocol server that bridges AI assistants (Claude) with Homebridge to control smart home accessories, manage plugins, and monitor the Homebridge instance. AI provider adapters, the agent loop and the plugin settings UI will be added under `src/` next to `mcp/`.
 
 ## Tech Stack
 
@@ -17,28 +17,35 @@ Homebridge MCP Server — a Model Context Protocol server that bridges AI assist
 
 ```
 src/
-├── index.ts                 # Entry point — reads env, prints startup errors, connects stdio
-├── create-server.ts         # createServer(client, { readOnly }) — registers every tool group
-├── homebridge-client.ts     # HTTP client for Homebridge REST API (JWT auth, timeouts)
-├── config-secrets.ts        # redact / restore secrets in config.json
-├── regex-search.ts          # regex log search in a killable worker thread
-├── types.ts                 # RegisterTools signature + Homebridge API shapes
-└── tools/
-    ├── helpers.ts           # registrar (read-only filter), result helpers, handle(), pick()
-    ├── accessories.ts       # list, get, set accessories + room layout
-    ├── server.ts            # status, restart, pairing, cached accessories
-    ├── config.ts            # read/update config.json
-    ├── plugins.ts           # list, search, lookup, versions, changelog
-    ├── system.ts            # system info (CPU, memory, OS)
-    └── logs.ts              # recent logs, search logs
+├── index.ts                     # Main export (`.`) — shared AI building blocks
+├── bin/
+│   ├── homebridge-ai-kit.ts     # CLI — `homebridge-ai-kit mcp`
+│   └── homebridge-mcp-server.ts # Alias kept for configs written for the old package name
+├── core/
+│   └── redaction.ts             # redact / restore secrets in config.json
+└── mcp/
+    ├── index.ts                 # `./mcp` export
+    ├── stdio.ts                 # runStdioServer() — reads env, prints startup errors, connects stdio
+    ├── create-server.ts         # createServer(client, { readOnly }) — registers every tool group
+    ├── homebridge-client.ts     # HTTP client for Homebridge REST API (JWT auth, timeouts)
+    ├── regex-search.ts          # regex log search in a killable worker thread
+    ├── types.ts                 # RegisterTools signature + Homebridge API shapes
+    └── tools/
+        ├── helpers.ts           # registrar (read-only filter), result helpers, handle(), pick()
+        ├── accessories.ts       # list, get, set accessories + room layout
+        ├── server.ts            # status, restart, pairing, cached accessories
+        ├── config.ts            # read/update config.json
+        ├── plugins.ts           # list, search, lookup, versions, changelog
+        ├── system.ts            # system info (CPU, memory, OS)
+        └── logs.ts              # recent logs, search logs
 ```
 
-Tests mirror the source structure under `test/`; shared mocks live in `test/helpers.ts`.
+Tests mirror the source structure under `test/`; shared MCP mocks live in `test/mcp/helpers.ts`.
 
 ## Commands
 
 - `npm run build` — compile TypeScript
-- `npm run dev` — run with tsx (hot reload)
+- `npm run dev` — run the MCP server with tsx
 - `npm test` — run tests (vitest run)
 - `npm run test:watch` — run tests in watch mode
 - `npm run test:coverage` — tests with coverage thresholds (CI runs this)
@@ -64,11 +71,11 @@ Tests mirror the source structure under `test/`; shared mocks live in `test/help
 ## Key Conventions
 
 - All API calls go through `HomebridgeClient.fetchAuthed()` / `request()`, which handle auth, retries and timeouts.
-- Tool inputs are validated with Zod schemas in each tool's `inputSchema`. Validation runs inside `McpServer`, so test it through `createServer` (see `test/create-server.test.ts`), not by calling handlers directly.
+- Tool inputs are validated with Zod schemas in each tool's `inputSchema`. Validation runs inside `McpServer`, so test it through `createServer` (see `test/mcp/create-server.test.ts`), not by calling handlers directly.
 - Never put user-supplied regexes on the main thread; use `regexSearch()`.
 - Anything that returns `config.json` must go through `redactSecrets()` unless the caller explicitly asked for secrets.
 - Room filtering in `list_accessories` uses the Homebridge UI layout (`/api/accessories/layout`), not HomeKit rooms.
-- Tests use `vi.fn()`, `vi.stubGlobal()` and `vi.stubEnv()` for mocking — no real API calls in tests. Use `mockClient()` / `collectHandlers()` from `test/helpers.ts`.
+- Tests use `vi.fn()`, `vi.stubGlobal()` and `vi.stubEnv()` for mocking — no real API calls in tests. Use `mockClient()` / `collectHandlers()` from `test/mcp/helpers.ts`.
 - **Always keep `README.md` and `CHANGELOG.md` up to date** when adding features, fixing bugs, or making any notable change.
 - **Follow [Semantic Versioning](https://semver.org/)** — bump MAJOR for breaking changes, MINOR for new features, PATCH for bug fixes.
 - **Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)** format in `CHANGELOG.md` — use Added, Changed, Deprecated, Removed, Fixed, Security sections.

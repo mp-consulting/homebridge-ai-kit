@@ -1,6 +1,8 @@
-# @mp-consulting/homebridge-mcp-server
+# @mp-consulting/homebridge-ai-kit
 
-MCP (Model Context Protocol) server for [Homebridge](https://homebridge.io) — control your smart home accessories, manage plugins, edit configuration, and monitor your Homebridge server from AI assistants like Claude.
+AI toolkit for [Homebridge](https://homebridge.io). It ships an MCP (Model Context Protocol) server that lets AI assistants like Claude control your smart home accessories, manage plugins, edit configuration and monitor your Homebridge server, plus the shared AI building blocks used by Homebridge Glass UI and the MP Consulting plugins.
+
+> **Renamed from `@mp-consulting/homebridge-mcp-server`.** The old `homebridge-mcp-server` command still works, so existing MCP client configs don't need to change. See [Migrating from homebridge-mcp-server](#migrating-from-homebridge-mcp-server).
 
 ## Features
 
@@ -19,7 +21,7 @@ MCP (Model Context Protocol) server for [Homebridge](https://homebridge.io) — 
 ## Installation
 
 ```bash
-npm install -g @mp-consulting/homebridge-mcp-server
+npm install -g @mp-consulting/homebridge-ai-kit
 ```
 
 ## Configuration
@@ -57,7 +59,8 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 {
   "mcpServers": {
     "homebridge": {
-      "command": "homebridge-mcp-server",
+      "command": "homebridge-ai-kit",
+      "args": ["mcp"],
       "env": {
         "HOMEBRIDGE_URL": "http://192.168.1.100:8581",
         "HOMEBRIDGE_USERNAME": "admin",
@@ -71,7 +74,7 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 ### Claude Code
 
 ```bash
-claude mcp add homebridge -- homebridge-mcp-server
+claude mcp add homebridge -- homebridge-ai-kit mcp
 ```
 
 Then set the environment variables in your shell or `.env` file.
@@ -82,7 +85,7 @@ Then set the environment variables in your shell or `.env` file.
 HOMEBRIDGE_URL=http://192.168.1.100:8581 \
 HOMEBRIDGE_USERNAME=admin \
 HOMEBRIDGE_PASSWORD=your-password \
-npx @modelcontextprotocol/inspector homebridge-mcp-server
+npx @modelcontextprotocol/inspector homebridge-ai-kit mcp
 ```
 
 ## Available Tools
@@ -144,6 +147,24 @@ npx @modelcontextprotocol/inspector homebridge-mcp-server
 > [hb-service](https://github.com/homebridge/homebridge-config-ui-x/wiki/Homebridge-Service-Command),
 > which is what makes the log file available over the API.
 
+## Library
+
+The package can also be imported:
+
+```js
+import { redactSecrets, restoreSecrets } from '@mp-consulting/homebridge-ai-kit';
+import { HomebridgeClient, createServer } from '@mp-consulting/homebridge-ai-kit/mcp';
+```
+
+## Migrating from homebridge-mcp-server
+
+```bash
+npm uninstall -g @mp-consulting/homebridge-mcp-server
+npm install -g @mp-consulting/homebridge-ai-kit
+```
+
+The package installs both `homebridge-ai-kit` and a `homebridge-mcp-server` alias, and the environment variables are unchanged, so existing Claude Desktop and Claude Code configs keep working. New configs should use `homebridge-ai-kit mcp`. The MCP server now reports its name as `homebridge-ai-kit`.
+
 ## Example Prompts
 
 Once configured, you can ask Claude things like:
@@ -159,8 +180,8 @@ Once configured, you can ask Claude things like:
 ## Development
 
 ```bash
-git clone https://github.com/mp-consulting/homebridge-mcp-server.git
-cd homebridge-mcp-server
+git clone https://github.com/mp-consulting/homebridge-ai-kit.git
+cd homebridge-ai-kit
 npm install
 npm run build
 ```

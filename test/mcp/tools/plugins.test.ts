@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { register } from '../../src/tools/plugins.js';
+import { register } from '../../../src/mcp/tools/plugins.js';
 import { collectHandlers, mockClient } from '../helpers.js';
 
 const installed = {

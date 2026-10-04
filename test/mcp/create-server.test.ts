@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { VERSION, createServer, envFlag } from '../src/create-server.js';
-import type { ServerOptions } from '../src/create-server.js';
-import type { HomebridgeClient } from '../src/homebridge-client.js';
+import { VERSION, createServer, envFlag } from '../../src/mcp/create-server.js';
+import type { ServerOptions } from '../../src/mcp/create-server.js';
+import type { HomebridgeClient } from '../../src/mcp/homebridge-client.js';
 import { mockClient } from './helpers.js';
 
 const WRITE_TOOLS = [
@@ -26,11 +26,11 @@ async function connect(client: HomebridgeClient = mockClient(), options: ServerO
 
 describe('createServer', () => {
   it('reports the package.json version', async () => {
-    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
     const mcp = await connect();
 
     expect(VERSION).toBe(pkg.version);
-    expect(mcp.getServerVersion()).toEqual({ name: 'homebridge-mcp-server', version: pkg.version });
+    expect(mcp.getServerVersion()).toEqual({ name: 'homebridge-ai-kit', version: pkg.version });
   });
 
   it('registers all 22 tools with titles and annotations', async () => {

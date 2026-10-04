@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { register } from '../../src/tools/system.js';
+import { register } from '../../../src/mcp/tools/system.js';
 import { collectHandlers, mockClient } from '../helpers.js';
 
 describe('system tools', () => {

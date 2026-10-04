@@ -10,8 +10,8 @@ import { register as registerPlugins } from './tools/plugins.js';
 import { register as registerSystem } from './tools/system.js';
 import { register as registerLogs } from './tools/logs.js';
 
-// package.json sits one level above both src/ and dist/, and ships in the npm tarball.
-const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
+// package.json sits two levels above both src/mcp/ and dist/mcp/, and ships in the npm tarball.
+const { version } = createRequire(import.meta.url)('../../package.json') as { version: string };
 
 export const VERSION = version;
 
@@ -30,7 +30,7 @@ export interface ServerOptions {
 }
 
 export function createServer(client: HomebridgeClient, options: ServerOptions = {}): McpServer {
-  const server = new McpServer({ name: 'homebridge-mcp-server', version: VERSION });
+  const server = new McpServer({ name: 'homebridge-ai-kit', version: VERSION });
   const tool = createRegistrar(server, options);
   for (const register of TOOL_GROUPS) {
     register(tool, client);
