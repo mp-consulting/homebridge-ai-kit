@@ -23,7 +23,7 @@ interface Content {
 
 interface ApiResponse {
   candidates?: Array<{ content?: { parts?: Part[] }; finishReason?: string }>;
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; cachedContentTokenCount?: number };
   modelVersion?: string;
   error?: { message?: string };
 }
@@ -106,6 +106,8 @@ function buildResult(model: string, parts: Part[], finish: string | undefined, m
     usage: {
       inputTokens: meta?.promptTokenCount ?? 0,
       outputTokens: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0),
+      // Implicit/explicit context caching: the cached part of promptTokenCount.
+      ...(meta?.cachedContentTokenCount !== undefined ? { cacheReadTokens: meta.cachedContentTokenCount } : {}),
     },
     stopReason: toolCalls.length > 0 ? 'tool_calls' : (STOP_REASONS[finish ?? ''] ?? 'other'),
     model,

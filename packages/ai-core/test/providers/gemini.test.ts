@@ -134,7 +134,7 @@ describe('GeminiProvider', () => {
         { candidates: [{ content: { parts: [{ text: 'Hel' }] } }] },
         { candidates: [{ content: { parts: [{ text: 'lo' }, { text: '' }] } }], modelVersion: 'gemini-x' },
         { candidates: [{ content: { parts: [{ functionCall: { name: 'f', args: { a: 1 } } }, { functionCall: { id: 'id2', name: 'g' } }] } }] },
-        { candidates: [{ finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2 } },
+        { candidates: [{ finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2, cachedContentTokenCount: 1 } },
         {},
       ]),
     );
@@ -146,7 +146,7 @@ describe('GeminiProvider', () => {
       { type: 'tool_call', id: 'id2', name: 'g', arguments: {} },
     ]);
     const done = chunks.at(-1) as Extract<ChatChunk, { type: 'done' }>;
-    expect(done).toMatchObject({ usage: { inputTokens: 3, outputTokens: 2 }, stopReason: 'tool_calls' });
+    expect(done).toMatchObject({ usage: { inputTokens: 3, outputTokens: 2, cacheReadTokens: 1 }, stopReason: 'tool_calls' });
     expect(done.result.model).toBe('gemini-x');
   });
 

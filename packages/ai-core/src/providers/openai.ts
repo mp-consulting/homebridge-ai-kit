@@ -40,6 +40,8 @@ interface ApiMessage {
 interface ApiUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
+  /** OpenAI's automatic prompt caching: the cached part of `prompt_tokens`. */
+  prompt_tokens_details?: { cached_tokens?: number } | null;
 }
 
 const STOP_REASONS: Record<string, StopReason> = {
@@ -85,7 +87,11 @@ function buildResult(model: string, text: string, toolCalls: ToolCall[], finish:
   return {
     text,
     toolCalls,
-    usage: { inputTokens: usage?.prompt_tokens ?? 0, outputTokens: usage?.completion_tokens ?? 0 },
+    usage: {
+      inputTokens: usage?.prompt_tokens ?? 0,
+      outputTokens: usage?.completion_tokens ?? 0,
+      ...(usage?.prompt_tokens_details?.cached_tokens !== undefined ? { cacheReadTokens: usage.prompt_tokens_details.cached_tokens } : {}),
+    },
     stopReason: toolCalls.length > 0 ? 'tool_calls' : (STOP_REASONS[finish ?? ''] ?? 'other'),
     model,
     message: {

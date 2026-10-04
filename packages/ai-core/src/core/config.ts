@@ -20,7 +20,7 @@ export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: 'claude-sonnet-5-5',
   openai: 'gpt-5',
-  gemini: 'gemini-2.5-pro',
+  gemini: 'gemini-3.8-flash',
   'openai-compatible': 'llama3.1',
 };
 

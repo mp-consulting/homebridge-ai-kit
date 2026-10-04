@@ -50,6 +50,20 @@ export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
   return sum;
 }
 
+/**
+ * Adds or replaces prices (USD per million tokens), e.g. for OpenAI or Gemini
+ * models, which ship without prices: `registerModelPrices({ 'gpt-5': { input: 1.25, output: 10, cacheRead: 0.125 } })`.
+ * Applies process-wide; a {@link UsageTracker} recomputes costs with the current prices.
+ */
+export function registerModelPrices(prices: Record<string, ModelPrice>): void {
+  for (const [model, price] of Object.entries(prices)) {
+    if (!(price.input >= 0 && price.output >= 0) || (price.cacheRead ?? 0) < 0 || (price.cacheWrite ?? 0) < 0) {
+      throw new Error(`Invalid price for ${model}: ${JSON.stringify(price)}`);
+    }
+    MODEL_PRICES[model] = { ...price };
+  }
+}
+
 /** The price of `model`: exact id, else without a date suffix (`-20251001`, `-2025-08-07`) or a `models/` prefix. */
 export function priceOf(model: string): ModelPrice | undefined {
   const bare = model.replace(/^models\//, '');
