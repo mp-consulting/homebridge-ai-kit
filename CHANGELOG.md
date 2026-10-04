@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Assistant requests are retried** when the provider is busy, rate limits them or can't be reached (from ai-core): new `maxRetries` setting (default 2, 0 turns it off) in `config.schema.json` and the README.
 - **Claude prompt caching and `effort`** (from ai-core): agent loops reuse the cached tools, system prompt and conversation, and the new `effort` setting (`config.schema.json`, Claude only) controls how much Claude thinks. Costs now price cache reads and writes correctly.
+- Usage tracking that survives restarts, with daily / monthly totals and optional token or USD budgets (`UsageTracker`, `JsonFileUsageStore`, `trackUsage`, from ai-core).
 
 ### Changed
 

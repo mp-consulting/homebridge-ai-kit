@@ -56,6 +56,7 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 | `generateJson`, `extractJson`, `normalizePluginSchema`, `JsonGenerationError` | Schema-checked JSON (ajv) with one repair retry |
 | `trimToContext`, `estimateTokens`, `inputBudget` | Keep inputs inside the context window |
 | `UsageTracker`, `costOf`, `priceOf`, `registerModelPrices`, `addUsage`, `ZERO_USAGE`, `MODEL_PRICES` | Token and cost accounting; Claude prompt-cache reads and writes are priced at the cache rates; register OpenAI / Gemini prices with `registerModelPrices` (cached input reported as `cacheReadTokens`) |
+| `UsageTracker` persistence and budgets: `toJSON()` / `UsageTracker.fromJSON()`, `UsageTracker.load(store)`, `JsonFileUsageStore`, `today()` / `thisMonth()` / `byDay()` / `byMonth()`, `budget` (`dailyTokens`, `monthlyTokens`, `dailyUsd`, `monthlyUsd`), `checkBudget()`, `BudgetExceededError`, `trackUsage(provider, tracker)` | Usage that survives restarts, with per-day / per-month totals and limits that make requests fail fast |
 | `PROMPTS` | Prompt templates (also used by ai-kit's MCP prompts) |
 
 **`@mp-consulting/homebridge-ai-core/plugin`**: `registerAiRoutes`, `testAiConnection`, `PLATFORM_NAME`, `PLUGIN_NAME`, and the types `AiRoutesOptions`, `ConnectionTest`, `PluginUiServer`.
