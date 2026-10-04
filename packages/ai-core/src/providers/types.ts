@@ -38,7 +38,7 @@ export interface ChatRequest {
   messages: ChatMessage[];
   tools?: ToolDefinition[];
   maxOutputTokens?: number;
-  /** Claude only: overrides the provider's `effort` for this request. */
+  /** Claude and OpenAI: overrides the provider's `effort` for this request. */
   effort?: EffortLevel;
   signal?: AbortSignal;
 }

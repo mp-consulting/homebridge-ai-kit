@@ -55,7 +55,7 @@ describe('registerAiRoutes', () => {
     await writeFile(path, JSON.stringify({ platforms: [{ platform: 'HomebridgeAiKit', provider: 'openai', apiKey: 'k' }] }));
     const ui = fakeServer(path);
     registerAiRoutes(ui.server);
-    expect(await ui.call('/ai/status')).toMatchObject({ enabled: true, provider: 'openai', model: 'gpt-5' });
+    expect(await ui.call('/ai/status')).toMatchObject({ enabled: true, provider: 'openai', model: 'gpt-6.1-sol' });
   });
 
   it('explains an error and streams chunks for a requestId', async () => {

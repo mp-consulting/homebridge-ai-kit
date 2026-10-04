@@ -52,11 +52,12 @@ All providers use plain `fetch` (no SDKs). Each declares what it can do, and fea
 | `provider` | Default model | API key | Tools | Streaming | Context |
 |---|---|---|---|---|---|
 | `anthropic` | `claude-sonnet-5-5` | required | yes | yes | 1M (200K for Haiku) |
-| `openai` | `gpt-5` | required | yes | yes | 128K |
+| `openai` | `gpt-6.1-sol` | required | yes | yes | 128K (set `contextTokens` for more) |
 | `gemini` | `gemini-3.8-flash` | required | yes | yes | 1M |
 | `openai-compatible` | `llama3.1` | optional | yes | yes | 8K (set `contextTokens`) |
 
 - Claude models: `claude-sonnet-5-5` (default), `claude-haiku-4-5-20251001` (cheapest), `claude-opus-5-5` (most capable).
+- OpenAI models: `gpt-6.1-sol` (default), `gpt-6-luna` (cheapest), `gpt-6-astra` (most capable). Requests use the Responses API with `store: false` (nothing is kept on OpenAI's side); newer models only call tools through it. Set `"openaiApi": "chat"` to use Chat Completions instead, e.g. for a proxy that only speaks it.
 - `openai-compatible` works with Ollama (`http://127.0.0.1:11434/v1`, the default), LM Studio (`http://127.0.0.1:1234/v1`), vLLM and similar. Set `contextTokens` to your model's context window so inputs are trimmed correctly.
 - An on-device Apple Foundation Models provider is planned.
 
@@ -81,7 +82,8 @@ Then open its settings in the Homebridge UI. The settings page edits the `Homebr
   "baseUrl": "http://127.0.0.1:11434/v1", // openai-compatible only (or a proxy)
   "contextTokens": 32768,             // optional override, mainly for local models
   "maxOutputTokens": 2048,
-  "effort": "medium",                 // Claude only: low | medium | high | xhigh | max (unset = model default)
+  "effort": "medium",                 // Claude and OpenAI: low | medium | high | xhigh | max (unset = model default)
+  "openaiApi": "responses",           // openai / openai-compatible: responses | chat (default responses for OpenAI, chat for local servers)
   "maxRetries": 2,                    // retries on 408/429/5xx/529 and network errors (backoff, honours retry-after); 0 = off
   "mcp": {
     "http": {

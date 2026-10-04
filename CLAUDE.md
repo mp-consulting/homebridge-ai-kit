@@ -38,7 +38,7 @@ packages/ai-core/                # @mp-consulting/homebridge-ai-core (own packag
 │   │   ├── types.ts             # AiProvider, ChatRequest/Result/Chunk, ToolDefinition, ProviderError
 │   │   ├── http.ts              # postJson() (retries with backoff on 408/429/5xx), SSE parser, shared helpers
 │   │   ├── anthropic.ts         # Messages API (tool_use, SSE, thinking blocks replayed verbatim)
-│   │   ├── openai.ts            # Chat Completions (also openai-compatible: Ollama, LM Studio)
+│   │   ├── openai.ts            # Responses API (default; store: false, reasoning replayed) or Chat Completions (`api: 'chat'`, default for openai-compatible: Ollama, LM Studio)
 │   │   ├── gemini.ts            # generateContent / streamGenerateContent, functionDeclarations
 │   │   └── index.ts             # createProvider(), complete() (stream-or-chat helper)
 │   ├── features/

@@ -12,6 +12,13 @@ describe('createProvider', () => {
     const local = createProvider(resolveAiConfig({ provider: 'openai-compatible' }));
     expect(local).toBeInstanceOf(OpenAiProvider);
     expect(local.name).toBe('openai-compatible');
+    expect((local as OpenAiProvider).api).toBe('chat');
+  });
+
+  it('passes openaiApi through to the OpenAI adapter', () => {
+    expect((createProvider(resolveAiConfig({ provider: 'openai', apiKey: 'k' })) as OpenAiProvider).api).toBe('responses');
+    expect((createProvider(resolveAiConfig({ provider: 'openai', apiKey: 'k', openaiApi: 'chat' })) as OpenAiProvider).api).toBe('chat');
+    expect((createProvider(resolveAiConfig({ provider: 'openai-compatible', openaiApi: 'responses' })) as OpenAiProvider).api).toBe('responses');
   });
 
   it('rejects an unknown provider', () => {

@@ -20,6 +20,7 @@ const FULL_BLOCK = {
   maxOutputTokens: 2048,
   maxRetries: 2,
   effort: 'medium',
+  openaiApi: 'chat',
   mcp: {
     http: {
       enabled: true,
