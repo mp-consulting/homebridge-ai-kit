@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { RegisterTools } from '../types.js';
-import { READ, handle, jsonResult, pick, textResult } from './helpers.js';
+import { READ, asObject, handle, jsonResult, pick, structuredResult, textResult } from './helpers.js';
+import { SERVER_INFO, STATUS } from './output-schemas.js';
 
 const CACHED_ACCESSORY_FIELDS = ['UUID', 'displayName', 'plugin', 'platform', 'category'] as const;
 
@@ -10,9 +11,13 @@ export const register: RegisterTools = (tool, client) => {
     {
       title: 'Homebridge status',
       description: 'Check if Homebridge is running and get its current status (up/down, version, plugins status).',
+      outputSchema: STATUS,
       annotations: READ,
     },
-    handle('getting Homebridge status', async () => jsonResult(await client.getHomebridgeStatus())),
+    handle('getting Homebridge status', async () => {
+      const status = await client.getHomebridgeStatus();
+      return structuredResult(asObject(status), status);
+    }),
   );
 
   tool(
@@ -20,9 +25,13 @@ export const register: RegisterTools = (tool, client) => {
     {
       title: 'Server information',
       description: 'Get Homebridge server information including version, Node.js version, uptime, OS details, and Homebridge instance ID.',
+      outputSchema: SERVER_INFO,
       annotations: READ,
     },
-    handle('getting server info', async () => jsonResult(await client.getServerInformation())),
+    handle('getting server info', async () => {
+      const info = await client.getServerInformation();
+      return structuredResult(asObject(info), info);
+    }),
   );
 
   tool(

@@ -224,6 +224,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 
 \* Needs [Homebridge Glass UI](https://github.com/mp-consulting/homebridge-config-glass-ui); with another Homebridge UI these tools answer with an error saying so.
 
+- The list/get tools (`list_accessories`, `get_accessory`, `list_plugins`, `list_child_bridges`, `get_child_bridge_health`, `get_homebridge_status`, `get_server_status`, `search_logs`, `list_scenes`) also return `structuredContent` matching their `outputSchema`.
 - `set_accessory` checks the value against the characteristic first (format, min/max, step, valid values, write permission), coerces `"50"` to `50` or `1` to `true`, and explains what is wrong instead of sending a bad value.
 - `get_accessory_history` returns an accessory's recorded sensor values (temperature, humidity, light level, battery, air quality, power, energy) over the last `hours` (default 24, up to 8760), optionally for one characteristic `type`. Per series it gives `count`, `min` / `max` (value and when), the time-weighted `avg`, `last`, and the `points` averaged down to `maxPoints` (default 48, 2–500), with times in UTC to the minute. It needs Homebridge Glass UI (`GET /api/accessories/:uniqueId/history`), which records these values while Homebridge runs in insecure mode.
 - `patch_config` changes one platform or accessory block (found by `platform`/`accessory` plus `name`); objects merge, `null` removes a key, and `__REDACTED__` keeps the current secret.
