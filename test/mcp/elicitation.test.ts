@@ -123,4 +123,13 @@ describe('elicitation for destructive tools', () => {
     await b.mcp.callTool({ name: 'restart_homebridge', arguments: {} });
     expect(env.restartServer).toHaveBeenCalled();
   });
+
+  it('audits a declined confirmation as not run', async () => {
+    const records: Array<Record<string, unknown>> = [];
+    const client = hb();
+    const { mcp } = await connect(client, { action: 'decline' }, { audit: { record: (e) => void records.push(e as unknown as Record<string, unknown>) } });
+    await mcp.callTool({ name: 'restart_homebridge', arguments: {} });
+    expect(client.restartServer).not.toHaveBeenCalled();
+    expect(records).toEqual([expect.objectContaining({ tool: 'restart_homebridge', ok: false, notConfirmed: true })]);
+  });
 });

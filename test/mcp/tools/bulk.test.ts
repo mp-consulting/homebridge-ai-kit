@@ -80,8 +80,16 @@ describe('set_accessories', () => {
     const { client, run } = setup();
     const result = await run({ uniqueIds: ['l1'], characteristicType: 'LockTargetState', value: 0 });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('set_accessory');
+    expect(result.content[0].text).toContain('Use set_security_accessory');
     expect(client.getAccessories).not.toHaveBeenCalled();
+  });
+
+  it('skips lock, garage door and alarm accessories whatever the characteristic', async () => {
+    const lock: Accessory = { uniqueId: 'door', serviceName: 'Front Door', type: 'LockMechanism', serviceCharacteristics: [{ type: 'On', value: false, format: 'bool', canWrite: true }] };
+    const { client, run } = setup({ getAccessories: vi.fn().mockResolvedValue([...accessories, lock]) });
+    const result = parse(await run({ uniqueIds: ['l1', 'door'], characteristicType: 'On', value: true }));
+    expect(result.skipped).toEqual([expect.objectContaining({ uniqueId: 'door', reason: expect.stringContaining('set_security_accessory') })]);
+    expect(client.setAccessoryCharacteristic).toHaveBeenCalledTimes(1);
   });
 
   it('needs exactly one way to pick targets', async () => {

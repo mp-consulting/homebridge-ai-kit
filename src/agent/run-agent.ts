@@ -8,8 +8,9 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { createServer, VERSION } from '../mcp/create-server.js';
 import type { HomebridgeClient } from '../mcp/homebridge-client.js';
+import type { AuditSink } from '../mcp/audit.js';
 import { untrusted } from '../mcp/tools/helpers.js';
-import { PROMPTS, addUsage, complete } from '@mp-consulting/homebridge-ai-core';
+import { PROMPTS, addUsage, complete, redactSecrets } from '@mp-consulting/homebridge-ai-core';
 import type { AiProvider, ChatMessage, ChatResult, ContentPart, TokenUsage, ToolCall, ToolDefinition } from '@mp-consulting/homebridge-ai-core';
 
 export type AgentEvent =
@@ -36,6 +37,8 @@ export interface RunAgentOptions {
    * Without it, destructive calls are refused.
    */
   confirm?: (call: ToolCall) => Promise<boolean>;
+  /** Records every write tool call the agent makes (principal `agent`), e.g. `createAuditLog()`. */
+  audit?: AuditSink;
 }
 
 export interface AgentToolCall extends ToolCall {
@@ -75,6 +78,23 @@ function resultText(result: Awaited<ReturnType<Client['callTool']>>): string {
   return content.map((c) => (c.type === 'text' ? c.text : `[${c.type}]`)).join('\n');
 }
 
+/** A destructive call the user did not allow never reaches the server, so it is audited here. */
+async function recordRefusal(audit: AuditSink | undefined, call: ToolCall): Promise<void> {
+  try {
+    await audit?.record({
+      ts: new Date().toISOString(),
+      tool: call.name,
+      args: redactSecrets(call.arguments),
+      ok: false,
+      error: 'not allowed by the user',
+      notConfirmed: true,
+      principal: 'agent',
+    });
+  } catch {
+    // Auditing must not break the conversation.
+  }
+}
+
 export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
   const { provider, client, onEvent, signal } = options;
   const maxSteps = options.maxSteps ?? 8;
@@ -88,7 +108,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
     return { text: result.text, steps: 1, toolCalls: [], usage: result.usage, messages, truncated: false };
   }
 
-  const server = createServer(client, { readOnly: options.readOnly, live: false });
+  const server = createServer(client, { readOnly: options.readOnly, live: false, audit: options.audit, principal: 'agent' });
   const mcp = new Client({ name: 'homebridge-ai-kit-agent', version: VERSION });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   try {
@@ -123,6 +143,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
         if (destructive.has(call.name) && !(await options.confirm?.(call))) {
           result = `The user did not allow ${call.name}. Do not retry it; explain what it would have done instead.`;
           isError = true;
+          await recordRefusal(options.audit, call);
         } else {
           try {
             const out = await mcp.callTool({ name: call.name, arguments: call.arguments });

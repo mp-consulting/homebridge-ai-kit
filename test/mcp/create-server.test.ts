@@ -87,8 +87,9 @@ describe('createServer', () => {
   it('registers only the tools a scope allows', async () => {
     const names = async (options: ServerOptions) => (await (await connect(mockClient(), options)).listTools()).tools.map((t) => t.name);
     const control = await names({ scope: 'control' });
-    expect(control.filter((n) => WRITE_TOOLS.includes(n)).sort()).toEqual(['set_accessory', 'set_security_accessory']);
-    expect(control).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length + 2);
+    const CONTROL = ['run_scene', 'set_accessories', 'set_accessory', 'set_security_accessory'];
+    expect(control.filter((n) => WRITE_TOOLS.includes(n)).sort()).toEqual(CONTROL);
+    expect(control).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length + CONTROL.length);
     expect(await names({ scope: 'read' })).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length);
     expect(await names({ scope: 'admin', readOnly: true })).toHaveLength(TOOL_COUNT - WRITE_TOOLS.length);
     expect(await names({ scope: 'admin' })).toHaveLength(TOOL_COUNT);

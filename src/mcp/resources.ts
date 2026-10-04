@@ -2,6 +2,7 @@ import { tailLines } from '@mp-consulting/homebridge-ai-core';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError, SubscribeRequestSchema, UnsubscribeRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { HomebridgeClient } from './homebridge-client.js';
+import { untrusted } from './tools/helpers.js';
 import type { LiveSource, LiveTopic, LiveWatch } from './live.js';
 
 export const RESOURCE_URIS = {
@@ -46,7 +47,8 @@ export function registerResources(server: McpServer, client: HomebridgeClient, l
     async (uri) => {
       const { text } = await client.getLogTail(64 * 1024);
       const lines = tailLines(text, RECENT_LOG_LINES, { keepBlank: true });
-      return { contents: [{ uri: uri.href, mimeType: 'text/plain', text: lines.join('\n') }] };
+      // Log lines are written by plugins: mark them as data, not instructions, for the model reading this resource.
+      return { contents: [{ uri: uri.href, mimeType: 'text/plain', text: untrusted('homebridge-log', lines.join('\n')) }] };
     },
   );
 

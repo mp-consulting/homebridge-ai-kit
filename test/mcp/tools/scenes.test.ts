@@ -68,14 +68,22 @@ describe('scene tools', () => {
     expect((await empty.tools.get('run_scene')!({ scene: 'Party' })).content[0].text).toContain('Scenes: none.');
   });
 
-  it('wants confirm for a scene that unlocks something', async () => {
+  it('refuses a scene that unlocks something, even with a confirm flag, and points to set_security_accessory', async () => {
     const { client, tools } = setup();
-    const refused = await tools.get('run_scene')!({ scene: 'ffffffffffffffff' });
-    expect(refused.isError).toBe(true);
-    expect(refused.content[0].text).toContain('confirm=true');
+    for (const args of [{ scene: 'ffffffffffffffff' }, { scene: 'Leave', confirm: true }]) {
+      const refused = await tools.get('run_scene')!(args);
+      expect(refused.isError).toBe(true);
+      expect(refused.content[0].text).toContain('set_security_accessory');
+    }
     expect(client.runScene).not.toHaveBeenCalled();
-    await tools.get('run_scene')!({ scene: 'Leave', confirm: true });
-    expect(client.runScene).toHaveBeenCalledWith('ffffffffffffffff');
+  });
+
+  it('treats any characteristic of a lock accessory in a scene as security-sensitive', async () => {
+    const { client, tools } = setup({
+      listScenes: vi.fn().mockResolvedValue([{ id: 's1', name: 'Odd', actions: [{ uniqueId: 'lock', characteristicType: 'LockManagementAutoSecurityTimeout', value: 0 }], schedules: [] }]),
+    });
+    expect((await tools.get('run_scene')!({ scene: 'Odd' })).isError).toBe(true);
+    expect(client.runScene).not.toHaveBeenCalled();
   });
 
   it('saves the current writable state, without security, triggers or blobs', async () => {

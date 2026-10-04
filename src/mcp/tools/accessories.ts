@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Accessory, CharacteristicInfo, RegisterTools } from '../types.js';
 import { READ, asObject, errorResult, handle, jsonResult, structuredResult } from './helpers.js';
 import { ACCESSORY, ACCESSORY_LIST } from './output-schemas.js';
-import { accessoryFilterShape, selectAccessories } from '../accessory-select.js';
+import { accessoryFilterShape, isSecurityWrite, selectAccessories } from '../accessory-select.js';
 
 function compactAccessory(acc: Accessory) {
   return {
@@ -76,26 +76,7 @@ export function checkCharacteristicValue(info: CharacteristicInfo, value: Value)
   return { value };
 }
 
-/**
- * Characteristics that lock/unlock, open/close or arm/disarm something. Writing
- * them goes through `set_security_accessory`, which is marked destructive so
- * clients (and `runAgent`) ask the user first; `set_accessory` refuses them.
- */
-export const SECURITY_CHARACTERISTICS: ReadonlySet<string> = new Set(
-  ['LockTargetState', 'LockCurrentState', 'LockControlPoint', 'TargetDoorState', 'CurrentDoorState', 'SecuritySystemTargetState', 'SecuritySystemCurrentState'].map((c) =>
-    c.toLowerCase(),
-  ),
-);
-
-/** Services whose every writable characteristic counts as security-sensitive. */
-export const SECURITY_SERVICES: ReadonlySet<string> = new Set(['LockMechanism', 'LockManagement', 'GarageDoorOpener', 'SecuritySystem'].map((s) => s.toLowerCase()));
-
-const normalize = (name: string) => name.replace(/[\s_-]/g, '').toLowerCase();
-
-/** True when writing `characteristicType` on `accessory` could unlock, open or disarm something. */
-export function isSecurityWrite(accessory: Pick<Accessory, 'type'> | undefined, characteristicType: string): boolean {
-  return SECURITY_CHARACTERISTICS.has(normalize(characteristicType)) || (accessory?.type !== undefined && SECURITY_SERVICES.has(normalize(accessory.type)));
-}
+export { SECURITY_CHARACTERISTICS, SECURITY_SERVICES, isSecurityWrite } from '../accessory-select.js';
 
 const SET_INPUT = {
   uniqueId: z.string().min(1).describe('The unique identifier of the accessory'),

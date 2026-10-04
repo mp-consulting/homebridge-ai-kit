@@ -93,6 +93,7 @@ export const register: RegisterTools = (tool, client) => {
         dryRun: z.boolean().optional().describe('Only show what would change (redacted diff); write nothing.'),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+      scope: 'admin',
     },
     handle('restoring config', async ({ backupId, dryRun }): Promise<CallToolResult> => {
       const backup = await client.getConfigBackup(backupId);
@@ -114,6 +115,7 @@ export const register: RegisterTools = (tool, client) => {
         'Create a full Homebridge backup (config, accessories cache, plugin storage) in the Homebridge UI backup directory, ' +
         'e.g. before a risky change. It appears in list_backups and can be downloaded or restored from the Homebridge UI.',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      scope: 'admin',
     },
     handle('creating backup', async () => {
       await requireGlassUi('Creating a backup from the MCP server', () => client.createInstanceBackup());

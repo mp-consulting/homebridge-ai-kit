@@ -86,6 +86,7 @@ export const register: RegisterTools = (tool, client, { allowSecrets = false } =
         dryRun,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+      scope: 'admin',
     },
     handle('updating config', async ({ config, dryRun }) => {
       const current = dryRun || containsRedacted(config) ? await client.getConfig() : undefined;
@@ -117,6 +118,7 @@ export const register: RegisterTools = (tool, client, { allowSecrets = false } =
         dryRun,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+      scope: 'admin',
     },
     handle('patching config', async ({ platform, accessory, name, patch, dryRun }) => {
       if (!platform === !accessory) {
