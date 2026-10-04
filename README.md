@@ -6,10 +6,13 @@ AI toolkit for [Homebridge](https://homebridge.io), in one package:
 - **The Assistant**: provider adapters (Claude, OpenAI, Gemini, any OpenAI-compatible server), an agent loop wired to the MCP tools, and ready-made features (log doctor, config copilot, device-error explainer, update-risk briefing, organiser, daily digest). Homebridge Glass UI and the MP Consulting plugins use these.
 - **A Homebridge plugin** (`HomebridgeAiKit` platform) with a settings page to pick the provider and model, test the connection, serve MCP over HTTP and generate client configs.
 
+The AI building blocks that don't need MCP also ship on their own as [`@mp-consulting/homebridge-ai-core`](packages/ai-core) — see [Packages](#packages).
+
 > **Renamed from `@mp-consulting/homebridge-mcp-server`.** The old `homebridge-mcp-server` command still works, so existing MCP client configs don't need to change. See [Migrating from homebridge-mcp-server](#migrating-from-homebridge-mcp-server).
 
 ## Contents
 
+- [Packages](#packages)
 - [Features](#features)
 - [Providers](#providers)
 - [Homebridge plugin](#homebridge-plugin)
@@ -18,6 +21,17 @@ AI toolkit for [Homebridge](https://homebridge.io), in one package:
 - [Security](#security)
 - [Migrating from homebridge-mcp-server](#migrating-from-homebridge-mcp-server)
 - [Development](#development)
+
+## Packages
+
+This repository is an npm workspace that publishes two packages, both at version 2.0.0:
+
+| Package | Use it for | Runtime dependencies |
+|---|---|---|
+| [`@mp-consulting/homebridge-ai-core`](packages/ai-core) | **Homebridge plugins.** The plugin-UI Assistant routes (`registerAiRoutes` from `./plugin`), providers, redaction, prompts, config and the Assistant features (everything except `runAgent`). | `ajv` only |
+| `@mp-consulting/homebridge-ai-kit` (this package) | **Homebridge Glass UI and MCP.** Everything in ai-core (re-exported) plus the MCP server, `runAgent`, the `HomebridgeAiKit` Homebridge plugin and `mcpClientSnippets`. | ai-core, `@modelcontextprotocol/sdk`, `socket.io-client`, `zod`, `@homebridge/plugin-ui-utils` |
+
+Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP SDK, socket.io or zod. ai-kit stays backward compatible: its `.` and `./plugin` exports re-export everything ai-core has under the same names, so code that imports from ai-kit keeps working. For local development before ai-core is published, a plugin next to this repo can use `"@mp-consulting/homebridge-ai-core": "file:../homebridge-mcp-server/packages/ai-core"` (run `npm run build` here first, and switch to `^2.0.0` before releasing the plugin).
 
 ## Features
 
@@ -82,12 +96,12 @@ With `mcp.http.enabled`, the plugin serves MCP at `http://<host>:<port>/mcp` whi
 
 ### Assistant routes for other plugins
 
-A plugin's custom UI server can offer the Assistant with one call; the browser side is `MpKit.ai` from [`@mp-consulting/homebridge-ui-kit`](https://github.com/mp-consulting/homebridge-ui-kit):
+A plugin's custom UI server can offer the Assistant with one call. Import the routes from `@mp-consulting/homebridge-ai-core/plugin` (ai-kit's `./plugin` re-exports them, but plugins should depend on the slimmer ai-core). The browser side is `MpKit.ai` from [`@mp-consulting/homebridge-ui-kit`](https://github.com/mp-consulting/homebridge-ui-kit):
 
 ```js
 // homebridge-ui/server.js
 import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
-import { registerAiRoutes } from '@mp-consulting/homebridge-ai-kit/plugin';
+import { registerAiRoutes } from '@mp-consulting/homebridge-ai-core/plugin';
 
 class UiServer extends HomebridgePluginUiServer {
   constructor() {
@@ -210,7 +224,9 @@ const result = await runAgent({
 | `readAiConfig`, `resolveAiConfig` | Read and default the `HomebridgeAiKit` block |
 | `redactSecrets`, `restoreSecrets`, `redactText` | Keep credentials out of model context |
 
-`./mcp` exports `createServer`, `HomebridgeClient`, `runStdioServer`, `runHttpServer`, `createLiveSource`; `./plugin` exports `registerAiRoutes`, `testAiConnection`, `mcpClientSnippets` and `AiKitPlatform`.
+Everything in this table except `runAgent` comes from `@mp-consulting/homebridge-ai-core` and is re-exported here unchanged.
+
+`./mcp` exports `createServer`, `HomebridgeClient`, `runStdioServer`, `runHttpServer`, `createLiveSource`; `./plugin` exports `registerAiRoutes` and `testAiConnection` (from ai-core's `./plugin`), `mcpClientSnippets` and `AiKitPlatform`.
 
 ## Security
 
@@ -235,16 +251,20 @@ The package installs both `homebridge-ai-kit` and a `homebridge-mcp-server` alia
 git clone https://github.com/mp-consulting/homebridge-ai-kit.git
 cd homebridge-ai-kit
 npm install
-npm run build          # copies the ui-kit assets into homebridge-ui/public/lib, then tsc
+npm run build          # builds packages/ai-core, copies the ui-kit assets into homebridge-ui/public/lib, then tsc
 ```
+
+The repository is an npm workspace: the root is ai-kit and `packages/ai-core` is ai-core. The root scripts run both packages (ai-core first); `npm run <script> -w packages/ai-core` runs one script for ai-core alone. ai-kit's tests resolve `@mp-consulting/homebridge-ai-core` to its sources, while `typecheck` and `build` use ai-core's `dist`, so they build it first.
 
 ```bash
 npm run dev            # MCP server on stdio with tsx
 npm test               # Run tests
 npm run test:coverage  # Tests with coverage thresholds (as CI does)
 npm run lint           # ESLint
-npm run typecheck      # Type-check src and test
+npm run typecheck      # Type-check src and test (both packages)
 ```
+
+**Publishing.** The release workflow publishes `@mp-consulting/homebridge-ai-core` first (skipped if that version is already on npm), then `@mp-consulting/homebridge-ai-kit`, which depends on it. Both use npm trusted publishing (OIDC): before the first release, configure a trusted publisher on npmjs.com for the new `@mp-consulting/homebridge-ai-core` package name too (repository `mp-consulting/homebridge-ai-kit`, workflow `publish.yml`); if npm only lets you add one to an existing package, publish ai-core 2.0.0 once by hand from `packages/ai-core`. The first ai-core release has to go out before ai-kit 2.0.0 can be installed from npm.
 
 > **Before release:** `@mp-consulting/homebridge-ui-kit` is a `file:../homebridge-ui-kit` dev dependency while ui-kit 1.2 is unpublished. Switch it to `^1.2.0` before publishing; until then `npm ci` needs the ui-kit checkout next to this repo.
 
