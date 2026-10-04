@@ -209,7 +209,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 
 | Group | Tools |
 |---|---|
-| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `get_accessory_layout`, `get_accessory_history` |
+| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `set_accessories` (many targets by id or filter, with `dryRun`; never locks, doors or alarms), `get_accessory_layout`, `get_accessory_history` |
 | Server | `get_homebridge_status`, `get_server_status`, `restart_homebridge`, `get_pairing_info`, `get_cached_accessories`, `remove_cached_accessory`, `reset_cached_accessories` |
 | Child bridges | `list_child_bridges`, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge` |
 | Config | `get_config`, `update_config` and `patch_config` (both with `dryRun` for a redacted diff; each write names the backup that undoes it), `list_config_backups`, `restore_config` |
