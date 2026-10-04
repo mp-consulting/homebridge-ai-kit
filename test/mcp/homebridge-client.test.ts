@@ -73,6 +73,20 @@ describe('HomebridgeClient', () => {
       await expect(createClient()).rejects.toThrow('HOMEBRIDGE_PASSWORD');
     });
 
+    it('sends every request through a custom fetch when one is given', async () => {
+      const mod = await import('../../src/mcp/homebridge-client.js');
+      const customFetch = vi.fn<typeof fetch>()
+        .mockResolvedValueOnce(jsonResponse({ access_token: 'tok123' }))
+        .mockResolvedValueOnce(jsonResponse([]));
+      const client = new mod.HomebridgeClient({ url: 'https://127.0.0.1:8581', fetch: customFetch });
+
+      await expect(client.getAccessories()).resolves.toEqual([]);
+
+      expect(customFetch).toHaveBeenCalledTimes(2);
+      expect(customFetch).toHaveBeenLastCalledWith('https://127.0.0.1:8581/api/accessories', expect.anything());
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('strips trailing slashes from URL', async () => {
       vi.stubEnv('HOMEBRIDGE_URL', 'http://localhost:8581///');
       const client = await createClient();
