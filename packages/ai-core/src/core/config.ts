@@ -60,6 +60,8 @@ export interface AiConfig {
   maxOutputTokens: number;
   /** Overrides the provider's context window, e.g. for a local model. */
   contextTokens?: number;
+  /** Retries of a failed provider request (network error, 408, 429, 5xx); default 2, 0 disables. */
+  maxRetries?: number;
   mcp: { http: McpHttpConfig };
 }
 
@@ -78,6 +80,17 @@ function positiveInt(v: unknown, name: string): number | undefined {
   const n = Number(v);
   if (!Number.isInteger(n) || n <= 0) {
     throw new Error(`${name} must be a positive integer, got ${JSON.stringify(v)}`);
+  }
+  return n;
+}
+
+function nonNegativeInt(v: unknown, name: string): number | undefined {
+  if (v === undefined || v === null || v === '') {
+    return undefined;
+  }
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new Error(`${name} must be a non-negative integer, got ${JSON.stringify(v)}`);
   }
   return n;
 }
@@ -111,6 +124,7 @@ export function resolveAiConfig(block: unknown = {}): AiConfig {
     ['apiKey', str(b.apiKey)],
     ['baseUrl', str(b.baseUrl)?.replace(/\/+$/, '')],
     ['contextTokens', positiveInt(b.contextTokens, 'contextTokens')],
+    ['maxRetries', nonNegativeInt(b.maxRetries, 'maxRetries')],
   ];
   for (const [key, value] of optional) {
     if (value !== undefined) {

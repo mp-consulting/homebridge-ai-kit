@@ -5,6 +5,12 @@ All notable changes to `@mp-consulting/homebridge-ai-core` will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Provider requests are retried.** Network errors and HTTP 408, 429, 5xx (including Anthropic's 529 "overloaded") are retried with full-jitter exponential backoff (500 ms base, 8 s cap), waiting at least as long as a `retry-after` / `retry-after-ms` header asks; a `retry-after` over 60 s fails at once instead of hanging. An aborted signal stops at once, also mid-backoff. Streaming requests are retried until the response starts. The `HomebridgeAiKit` block takes `maxRetries` (default 2, 0 turns it off); the provider constructors also take `maxRetries` and a `retry` object (`baseDelayMs`, `maxDelayMs`, `maxRetryAfterMs`). New exports: `DEFAULT_RETRY`, `isRetryableStatus`, `parseRetryAfter`, `backoffDelay` and the types `RetryOptions`, `ProviderRetryOptions`.
+
 ## [2.1.0] - 2026-10-04
 
 ### Added

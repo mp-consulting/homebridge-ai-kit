@@ -1,5 +1,6 @@
 import type { ProviderName } from '../core/config.js';
 import type { TokenUsage } from '../core/usage.js';
+import type { RetryOptions } from './http.js';
 
 export type { TokenUsage };
 
@@ -56,6 +57,19 @@ export type ChatChunk =
   | { type: 'text'; delta: string }
   | ({ type: 'tool_call' } & ToolCall)
   | { type: 'done'; usage: TokenUsage; stopReason: StopReason; result: ChatResult };
+
+/** Options every provider adapter takes besides its config. */
+export interface ProviderRetryOptions {
+  /** Retries of a failed request; overrides `retry.maxRetries` when set. */
+  maxRetries?: number;
+  /** Fine-tunes the backoff (see {@link RetryOptions}). */
+  retry?: RetryOptions;
+}
+
+/** The retry settings a provider passes to `postJson`. */
+export function retryOptions(options: ProviderRetryOptions): RetryOptions {
+  return { ...options.retry, ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}) };
+}
 
 export interface ProviderCapabilities {
   tools: boolean;

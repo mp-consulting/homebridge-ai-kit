@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Assistant requests are retried** when the provider is busy, rate limits them or can't be reached (from ai-core): new `maxRetries` setting (default 2, 0 turns it off) in `config.schema.json` and the README.
+
 ## [2.1.0] - 2026-10-04
 
 ### Added

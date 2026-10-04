@@ -17,7 +17,9 @@ import type {
   StopReason,
   ToolCall,
 } from './types.js';
-import { ProviderError } from './types.js';
+import { ProviderError, retryOptions } from './types.js';
+import type { ProviderRetryOptions } from './types.js';
+import type { RetryOptions } from './http.js';
 
 type OpenAiName = 'openai' | 'openai-compatible';
 
@@ -93,7 +95,7 @@ function buildResult(model: string, text: string, toolCalls: ToolCall[], finish:
   };
 }
 
-export interface OpenAiProviderOptions extends Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'> {
+export interface OpenAiProviderOptions extends Pick<AiConfig, 'model' | 'apiKey' | 'baseUrl' | 'maxOutputTokens' | 'contextTokens'>, ProviderRetryOptions {
   name?: OpenAiName;
   capabilities?: Partial<ProviderCapabilities>;
 }
@@ -105,6 +107,7 @@ export class OpenAiProvider implements AiProvider {
   private readonly url: string;
   private readonly apiKey?: string;
   private readonly maxOutputTokens: number;
+  private readonly retry: RetryOptions;
 
   constructor(options: OpenAiProviderOptions) {
     this.name = options.name ?? 'openai';
@@ -115,6 +118,7 @@ export class OpenAiProvider implements AiProvider {
     this.apiKey = options.apiKey;
     this.url = `${options.baseUrl ?? DEFAULT_BASE_URLS[this.name]}/chat/completions`;
     this.maxOutputTokens = options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
+    this.retry = retryOptions(options);
     this.capabilities = {
       tools: true,
       streaming: true,
@@ -137,7 +141,7 @@ export class OpenAiProvider implements AiProvider {
         : {}),
       ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
     };
-    return postJson(this.name, this.url, this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}, body, req.signal);
+    return postJson(this.name, this.url, this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}, body, req.signal, this.retry);
   }
 
   async chat(req: ChatRequest): Promise<ChatResult> {

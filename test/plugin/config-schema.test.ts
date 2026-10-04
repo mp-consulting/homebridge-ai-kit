@@ -18,6 +18,7 @@ const FULL_BLOCK = {
   baseUrl: 'http://127.0.0.1:11434/v1',
   contextTokens: 8192,
   maxOutputTokens: 2048,
+  maxRetries: 2,
   mcp: {
     http: {
       enabled: true,
