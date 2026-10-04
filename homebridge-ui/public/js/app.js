@@ -24,6 +24,11 @@
     return Number.isFinite(n) && n > 0 ? n : undefined;
   }
 
+  function list(value) {
+    const items = value.split(',').map((s) => s.trim()).filter(Boolean);
+    return items.length ? items : undefined;
+  }
+
   function clean(obj) {
     Object.keys(obj).forEach((k) => {
       if (obj[k] === undefined || obj[k] === '') {
@@ -48,6 +53,10 @@
       homebridgeToken: $('http-hb-token').value.trim(),
       homebridgeCertFingerprint: $('http-hb-cert-fingerprint').value.trim(),
       homebridgeCertPath: $('http-hb-cert-path').value.trim(),
+      readOnly: $('http-read-only').checked,
+      allowedOrigins: list($('http-allowed-origins').value),
+      auditLog: $('http-audit-log').checked,
+      auditLogPath: $('http-audit-log-path').value.trim(),
     }));
     mcp.http = http;
     const provider = $('provider').value;
@@ -81,6 +90,10 @@
     $('http-hb-token').value = http.homebridgeToken || '';
     $('http-hb-cert-fingerprint').value = http.homebridgeCertFingerprint || '';
     $('http-hb-cert-path').value = http.homebridgeCertPath || '';
+    $('http-read-only').checked = http.readOnly === true;
+    $('http-allowed-origins').value = (http.allowedOrigins || []).join(', ');
+    $('http-audit-log').checked = http.auditLog !== false;
+    $('http-audit-log-path').value = http.auditLogPath || '';
   }
 
   function refreshVisibility() {
@@ -91,6 +104,7 @@
     $('model').placeholder = DEFAULT_MODELS[provider];
     $('model-help').textContent = MODEL_HELP[provider] + ' Leave empty for the default.';
     $('http-settings').classList.toggle('d-none', !$('http-enabled').checked);
+    $('http-audit-log-path-group').classList.toggle('d-none', !$('http-audit-log').checked);
   }
 
   let saveTimer;
@@ -149,7 +163,34 @@
     });
   }
 
+  /**
+   * The Homebridge user's theme: light, dark or auto. Newer UIs expose
+   * getUserSettings(); older ones only userCurrentLightingMode(), which already
+   * resolves auto, so it is asked again whenever the system preference changes.
+   */
+  function applyUserTheme() {
+    const theme = window.AiKitTheme;
+    if (!theme) {
+      return;
+    }
+    const fromSettings = typeof homebridge.getUserSettings === 'function'
+      ? homebridge.getUserSettings().then((s) => s && (s.theme || s.lightingMode || s.colorScheme))
+      : Promise.resolve(undefined);
+    fromSettings
+      .then((mode) => {
+        if (mode === 'light' || mode === 'dark' || mode === 'auto' || typeof homebridge.userCurrentLightingMode !== 'function') {
+          return mode;
+        }
+        return homebridge.userCurrentLightingMode();
+      })
+      .then((mode) => theme.set(mode), () => theme.set('auto'));
+  }
+
   function init() {
+    applyUserTheme();
+    if (window.AiKitTheme) {
+      window.AiKitTheme.onSystemChange(applyUserTheme);
+    }
     const slot = $('test-button-slot');
     slot.innerHTML = ai
       ? ai.renderButton({ id: 'test-connection', label: 'Test connection' })

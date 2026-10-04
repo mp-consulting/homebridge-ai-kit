@@ -131,6 +131,57 @@
                 "description": "MCP clients must send this as a bearer token.",
                 "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
               },
+              "readOnly": {
+                "title": "Read-only",
+                "type": "boolean",
+                "default": false,
+                "description": "Clients can read accessories, logs and config but change nothing, whatever their token's scope.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "clients": {
+                "title": "More client tokens",
+                "type": "array",
+                "description": "Extra tokens with limited access, e.g. a read-only token for a dashboard. The client token above has full access.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "title": "Name", "type": "string", "placeholder": "Dashboard", "description": "Shown in the audit log." },
+                    "token": { "title": "Token", "type": "string", "x-sensitive": true, "required": true },
+                    "scope": {
+                      "title": "Access",
+                      "type": "string",
+                      "default": "read",
+                      "oneOf": [
+                        { "title": "Read: look only", "enum": ["read"] },
+                        { "title": "Control: read, plus control accessories (locks still ask for confirmation)", "enum": ["control"] },
+                        { "title": "Admin: everything, including config, plugins and restarts", "enum": ["admin"] }
+                      ]
+                    }
+                  }
+                },
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "auditLog": {
+                "title": "Audit log",
+                "type": "boolean",
+                "default": true,
+                "description": "Record every change an MCP client makes (tool, arguments with secrets hidden, token, result) in a JSON Lines file.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
+              "auditLogPath": {
+                "title": "Audit log file",
+                "type": "string",
+                "placeholder": "<Homebridge storage>/homebridge-ai-kit-audit.jsonl",
+                "description": "Rotated at 5 MB, keeping three old files.",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled && model.mcp.http.auditLog !== false;" }
+              },
+              "allowedOrigins": {
+                "title": "Allowed browser origins",
+                "type": "array",
+                "items": { "type": "string", "placeholder": "https://my-dashboard.local" },
+                "description": "Web pages allowed to call the MCP server from a browser. Loopback pages (http://localhost:…) and this server's own IP address are always allowed; desktop clients send no origin and are unaffected. Use * to allow any (not recommended).",
+                "condition": { "functionBody": "return model.mcp && model.mcp.http && model.mcp.http.enabled;" }
+              },
               "homebridgeUrl": {
                 "title": "Homebridge UI URL",
                 "type": "string",

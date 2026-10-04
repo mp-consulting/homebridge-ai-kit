@@ -1,27 +1,20 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Kit</title>
-  <script>
-    (function () {
-      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.dataset.bsTheme = dark ? 'dark' : 'light';
-    }());
-  </script>
   <!--
-    Served from the plugin, not a CDN: the Homebridge UI's content-security policy only
-    allows same-origin styles and scripts. `npm run copy:ui-assets` fills lib/.
+    Everything is served from the plugin, not a CDN or inline: the Homebridge UI's
+    content-security policy only allows same-origin styles and scripts.
+    `npm run copy:ui-assets` fills lib/. kit.css already contains the Assistant
+    components, so ai.css (its standalone build) is not loaded.
   -->
+  <script src="js/theme.js"></script>
   <link rel="stylesheet" href="lib/bootstrap.min.css">
   <link rel="stylesheet" href="lib/bootstrap-icons.min.css">
   <link rel="stylesheet" href="lib/kit.css">
-  <link rel="stylesheet" href="lib/ai.css">
-  <style>
-    .snippet { white-space: pre; font-size: .8rem; max-height: 18rem; overflow: auto; }
-    .form-text code { font-size: .8em; }
-  </style>
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
   <div class="container py-4">
@@ -146,6 +139,23 @@
               <input class="form-control" id="http-hb-cert-path" placeholder="/var/lib/homebridge/ssl-certs/certificate.pem" spellcheck="false">
               <div class="form-text">Or a PEM file with the UI's certificate or its CA.</div>
             </div>
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="http-read-only">
+            <label class="form-check-label" for="http-read-only">Read-only: clients can look but change nothing</label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label mp-label" for="http-allowed-origins">Allowed browser origins</label>
+            <input class="form-control" id="http-allowed-origins" placeholder="https://my-dashboard.local" spellcheck="false">
+            <div class="form-text">Comma-separated. Only for web pages calling the server; desktop clients, localhost pages and this server's own IP are always allowed.</div>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="http-audit-log">
+            <label class="form-check-label" for="http-audit-log">Audit log of every change clients make</label>
+          </div>
+          <div class="mb-3" id="http-audit-log-path-group">
+            <input class="form-control" id="http-audit-log-path" placeholder="&lt;Homebridge storage&gt;/homebridge-ai-kit-audit.jsonl" spellcheck="false" aria-label="Audit log file">
+            <div class="form-text">JSON Lines, secrets hidden, rotated at 5 MB. Extra tokens with read or control access go in <code>mcp.http.clients</code> in the JSON config.</div>
           </div>
         </div>
 

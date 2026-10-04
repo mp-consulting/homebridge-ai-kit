@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import initializer from '../../src/index.js';
@@ -6,11 +9,20 @@ import * as main from '../../src/index.js';
 import * as plugin from '../../src/plugin/index.js';
 import { AiKitPlatform } from '../../src/plugin/platform.js';
 
-function setup(config: unknown) {
+function setup(config: unknown, storagePath?: string) {
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-  const api = new EventEmitter();
+  const api = Object.assign(new EventEmitter(), storagePath ? { user: { storagePath: () => storagePath } } : {});
   const platform = new AiKitPlatform(log, config, api);
   return { log, api, platform };
+}
+
+function freePort(): Promise<number> {
+  return new Promise<number>((resolve) => {
+    const probe = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = probe.address() as { port: number };
+      probe.close(() => resolve(port));
+    });
+  });
 }
 
 afterEach(() => {
@@ -59,6 +71,28 @@ describe('AiKitPlatform', () => {
     const url = String(started![0]).split(' at ')[1];
     expect((await fetch(url, { method: 'POST' })).status).toBe(401);
     api.emit('shutdown');
+  });
+
+  it('serves read-only with scoped tokens and audits writes in the storage path', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ai-kit-platform-'));
+    vi.stubEnv('HOMEBRIDGE_AI_MCP_TOKEN', '');
+    const { log, api, platform } = setup(
+      { apiKey: 'k', mcp: { http: { enabled: true, port: await freePort(), readOnly: true, clients: [{ token: 'c', scope: 'control' }], homebridgeToken: 'hbg_x' } } },
+      dir,
+    );
+    api.emit('didFinishLaunching');
+    await platform.ready;
+    expect(log.error).not.toHaveBeenCalled();
+    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^MCP server listening at .* \(read-only\)$/));
+    expect(log.info).toHaveBeenCalledWith(`MCP write tool calls are logged to ${join(dir, 'homebridge-ai-kit-audit.jsonl')}`);
+    api.emit('shutdown');
+
+    const off = setup({ apiKey: 'k', mcp: { http: { enabled: true, port: await freePort(), token: 't', auditLog: false, homebridgeToken: 'hbg_x' } } });
+    off.api.emit('didFinishLaunching');
+    await off.platform.ready;
+    expect(off.log.info).not.toHaveBeenCalledWith(expect.stringContaining('logged to'));
+    off.api.emit('shutdown');
+    await rm(dir, { recursive: true, force: true });
   });
 
   it('does nothing when HTTP is disabled', async () => {

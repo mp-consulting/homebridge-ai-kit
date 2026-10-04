@@ -28,7 +28,7 @@ export {
   readAiConfig,
   resolveAiConfig,
 } from './core/config.js';
-export type { AiConfig, EffortLevel, McpHttpConfig, ProviderName } from './core/config.js';
+export type { AiConfig, EffortLevel, McpClientConfig, McpHttpConfig, McpScope, ProviderName } from './core/config.js';
 
 // ── Providers ──
 export {

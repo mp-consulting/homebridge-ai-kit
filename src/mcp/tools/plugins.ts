@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RegisterTools } from '../types.js';
-import { READ, READ_REGISTRY, handle, jsonResult, pick, structuredResult, textResult } from './helpers.js';
+import { READ, READ_REGISTRY, handle, jsonResult, pick, structuredResult, untrustedResult } from './helpers.js';
 import { PLUGIN_LIST } from './output-schemas.js';
 
 const INSTALLED_FIELDS = [
@@ -105,7 +105,7 @@ export const register: RegisterTools = (tool, client) => {
     },
     handle('getting plugin changelog', async ({ pluginName }) => {
       const changelog = await client.getPluginChangelog(pluginName);
-      return typeof changelog === 'string' ? textResult(changelog) : jsonResult(changelog);
+      return typeof changelog === 'string' ? untrustedResult(`changelog:${pluginName}`, changelog) : jsonResult(changelog);
     }),
   );
 };
