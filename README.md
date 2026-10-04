@@ -31,7 +31,7 @@ This repository is an npm workspace that publishes two packages, both at version
 | [`@mp-consulting/homebridge-ai-core`](packages/ai-core) | **Homebridge plugins.** The plugin-UI Assistant routes (`registerAiRoutes` from `./plugin`), providers, redaction, prompts, config and the Assistant features (everything except `runAgent`). | `ajv` only |
 | `@mp-consulting/homebridge-ai-kit` (this package) | **Homebridge Glass UI and MCP.** Everything in ai-core (re-exported) plus the MCP server, `runAgent`, the `HomebridgeAiKit` Homebridge plugin and `mcpClientSnippets`. | ai-core, `@modelcontextprotocol/sdk`, `socket.io-client`, `zod`, `@homebridge/plugin-ui-utils` |
 
-Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP SDK, socket.io or zod. ai-kit stays backward compatible: its `.` and `./plugin` exports re-export everything ai-core has under the same names, so code that imports from ai-kit keeps working. For local development before ai-core is published, a plugin next to this repo can use `"@mp-consulting/homebridge-ai-core": "file:../homebridge-mcp-server/packages/ai-core"` (run `npm run build` here first, and switch to `^2.0.0` before releasing the plugin).
+Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP SDK, socket.io or zod. ai-kit stays backward compatible: its `.` and `./plugin` exports re-export everything ai-core has under the same names, so code that imports from ai-kit keeps working.
 
 ## Features
 
@@ -265,8 +265,6 @@ npm run typecheck      # Type-check src and test (both packages)
 ```
 
 **Publishing.** The release workflow publishes `@mp-consulting/homebridge-ai-core` first (skipped if that version is already on npm), then `@mp-consulting/homebridge-ai-kit`, which depends on it. Both use npm trusted publishing (OIDC): before the first release, configure a trusted publisher on npmjs.com for the new `@mp-consulting/homebridge-ai-core` package name too (repository `mp-consulting/homebridge-ai-kit`, workflow `publish.yml`); if npm only lets you add one to an existing package, publish ai-core 2.0.0 once by hand from `packages/ai-core`. The first ai-core release has to go out before ai-kit 2.0.0 can be installed from npm.
-
-> **Before release:** `@mp-consulting/homebridge-ui-kit` is a `file:../homebridge-ui-kit` dev dependency while ui-kit 1.2 is unpublished. Switch it to `^1.2.0` before publishing; until then `npm ci` needs the ui-kit checkout next to this repo.
 
 ## License
 
