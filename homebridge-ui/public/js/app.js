@@ -164,33 +164,18 @@
   }
 
   /**
-   * The Homebridge user's theme: light, dark or auto. Newer UIs expose
-   * getUserSettings(); older ones only userCurrentLightingMode(), which already
-   * resolves auto, so it is asked again whenever the system preference changes.
+   * The Homebridge user's theme (light, dark or auto), applied by ui-kit:
+   * lib/theme-boot.js sets it before first paint, MpKit.Theme.init() then
+   * follows the Homebridge setting and the system preference.
    */
   function applyUserTheme() {
-    const theme = window.AiKitTheme;
-    if (!theme) {
-      return;
+    if (window.MpKit && window.MpKit.Theme) {
+      window.MpKit.Theme.init();
     }
-    const fromSettings = typeof homebridge.getUserSettings === 'function'
-      ? homebridge.getUserSettings().then((s) => s && (s.theme || s.lightingMode || s.colorScheme))
-      : Promise.resolve(undefined);
-    fromSettings
-      .then((mode) => {
-        if (mode === 'light' || mode === 'dark' || mode === 'auto' || typeof homebridge.userCurrentLightingMode !== 'function') {
-          return mode;
-        }
-        return homebridge.userCurrentLightingMode();
-      })
-      .then((mode) => theme.set(mode), () => theme.set('auto'));
   }
 
   function init() {
     applyUserTheme();
-    if (window.AiKitTheme) {
-      window.AiKitTheme.onSystemChange(applyUserTheme);
-    }
     const slot = $('test-button-slot');
     slot.innerHTML = ai
       ? ai.renderButton({ id: 'test-connection', label: 'Test connection' })

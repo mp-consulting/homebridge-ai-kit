@@ -7,13 +7,13 @@
   <!--
     Everything is served from the plugin, not a CDN or inline: the Homebridge UI's
     content-security policy only allows same-origin styles and scripts.
-    `npm run copy:ui-assets` fills lib/. kit.css already contains the Assistant
+    `npm run copy:ui-assets` fills lib/. kit.min.css already contains the Assistant
     components, so ai.css (its standalone build) is not loaded.
   -->
-  <script src="js/theme.js"></script>
+  <script src="lib/theme-boot.js"></script>
   <link rel="stylesheet" href="lib/bootstrap.min.css">
   <link rel="stylesheet" href="lib/bootstrap-icons.min.css">
-  <link rel="stylesheet" href="lib/kit.css">
+  <link rel="stylesheet" href="lib/kit.min.css">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -180,7 +180,7 @@
     </footer>
   </div>
 
-  <script src="lib/kit.js"></script>
+  <script src="lib/kit.min.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
