@@ -516,10 +516,12 @@ export class HomebridgeClient {
   /**
    * Stream the Homebridge log file and keep only its last `maxBytes`, so a
    * multi-hundred-MB log never has to sit in memory whole. The UI strips ANSI
-   * colour codes unless `colour=yes` is passed. Requires an hb-service install.
+   * colour codes unless `colour=yes` is passed (`options.colour`), and the colour is the only
+   * place Homebridge shows a line's level. Requires an hb-service install.
    */
-  async getLogTail(maxBytes: number): Promise<LogTail> {
-    const res = await this.fetchAuthed('GET', '/api/platform-tools/hb-service/log/download');
+  async getLogTail(maxBytes: number, options: { colour?: boolean } = {}): Promise<LogTail> {
+    const query = options.colour ? '?colour=yes' : '';
+    const res = await this.fetchAuthed('GET', `/api/platform-tools/hb-service/log/download${query}`);
     if (!res.body) {
       return { text: '', truncated: false };
     }

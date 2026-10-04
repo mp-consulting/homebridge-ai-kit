@@ -218,7 +218,7 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 | Backups | `create_backup`, `list_backups` (full instance backups in the UI's backup directory) |
 | Plugins | `list_plugins`, `search_plugins`, `lookup_plugin`, `get_plugin_versions`, `get_plugin_config_schema`, `get_plugin_changelog`, `install_plugin`, `update_plugin`, `uninstall_plugin`, `get_plugin_job` |
 | System | `get_system_info` |
-| Logs | `get_recent_logs`, `search_logs` |
+| Logs | `get_recent_logs`, `search_logs` (filter by `since`/`until`, minimum `level`, `plugin` prefix; `context` lines around matches) |
 
 \* Needs [Homebridge Glass UI](https://github.com/mp-consulting/homebridge-config-glass-ui); with another Homebridge UI these tools answer with an error saying so.
 
