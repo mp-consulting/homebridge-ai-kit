@@ -3,6 +3,7 @@
  * date is the server's `toLocaleString()` and the level is only visible in the
  * colour (Homebridge's logger paints warnings yellow, errors red, debug grey).
  */
+import { stripAnsi } from '@mp-consulting/homebridge-ai-core';
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
@@ -84,7 +85,7 @@ export function parseLogTimestamp(s: string): number | undefined {
 export function parseLogLines(raw: string[]): LogEntry[] {
   let last: Omit<LogEntry, 'text'> = { level: 'info' };
   return raw.map((line) => {
-    const text = line.replace(ANSI, '');
+    const text = stripAnsi(line);
     const m = LINE.exec(text);
     const time = m ? parseLogTimestamp(m[1]) : undefined;
     if (m && time !== undefined) {
