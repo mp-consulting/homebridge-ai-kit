@@ -73,13 +73,12 @@ export function registerAiRoutes(server: PluginUiServer, options: AiRoutesOption
     if (requestId) {
       inFlight.set(requestId, controller);
     }
-    const onChunk = requestId
-      ? (delta: string) => {
-          if (!controller.signal.aborted) {
-            server.pushEvent('ai:chunk', { requestId, delta });
-          }
-        }
-      : undefined;
+    const push = (delta: string) => {
+      if (!controller.signal.aborted) {
+        server.pushEvent('ai:chunk', { requestId, delta });
+      }
+    };
+    const onChunk = requestId ? push : undefined;
     try {
       const result = await fn(onChunk, controller.signal);
       if (requestId) {
