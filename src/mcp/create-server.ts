@@ -15,6 +15,8 @@ import { register as registerChildBridges } from './tools/child-bridges.js';
 import { registerResources } from './resources.js';
 import { registerPrompts } from './prompts.js';
 import type { LiveSource } from './live.js';
+import type { AuditSink } from './audit.js';
+import type { Scope } from './scopes.js';
 import { createLiveSource } from './live.js';
 
 // package.json sits two levels above both src/mcp/ and dist/mcp/, and ships in the npm tarball.
@@ -44,15 +46,27 @@ export interface ServerOptions {
   live?: LiveSource | false;
   /**
    * Let `get_config` return real secrets when asked (`includeSecrets`). Off by
-   * default (env: `HOMEBRIDGE_ALLOW_SECRETS`) and always off in read-only mode.
+   * default (env: `HOMEBRIDGE_ALLOW_SECRETS`) and always off in read-only mode
+   * or below the `admin` scope.
    */
   allowSecrets?: boolean;
+  /**
+   * Token scope: `read` (like `readOnly`), `control` (plus device control) or
+   * `admin` (everything, the default).
+   */
+  scope?: Scope;
+  /** Records every write tool call (e.g. `createAuditLog()`). */
+  audit?: AuditSink;
+  /** Who is calling, for the audit log (e.g. the token's name). */
+  principal?: string;
 }
 
 export function createServer(client: HomebridgeClient, options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: 'homebridge-ai-kit', version: VERSION });
-  const tool = createRegistrar(server, options);
-  const toolOptions = { allowSecrets: options.allowSecrets === true && !options.readOnly };
+  const tool = createRegistrar(server, { readOnly: options.readOnly, scope: options.scope, audit: options.audit, principal: options.principal });
+  // Secrets are config data: only an admin session that can write gets them.
+  const admin = !options.readOnly && (options.scope ?? 'admin') === 'admin';
+  const toolOptions = { allowSecrets: options.allowSecrets === true && admin };
   for (const register of TOOL_GROUPS) {
     register(tool, client, toolOptions);
   }

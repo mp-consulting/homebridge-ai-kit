@@ -60,7 +60,9 @@ src/                             # ai-kit; imports ai-core as `@mp-consulting/ho
     ├── create-server.ts         # createServer(client, { readOnly, live }) — tools, resources, prompts
     ├── homebridge-client.ts     # HTTP client for the Homebridge UI REST API (login, API token or getToken)
     ├── tls.ts                   # createTrustedFetch() — undici fetch trusting a pinned fingerprint / PEM (self-signed https UI)
-    ├── live.ts                  # createLiveSource() — socket.io change feed with polling fallback
+    ├── live.ts                  # createLiveSource() — socket.io change feed with polling fallback; shareLiveSource()
+    ├── audit.ts                 # createAuditLog() — JSONL audit log of write tool calls, rotated by size
+    ├── scopes.ts                # token scopes read < control < admin
     ├── resources.ts             # homebridge:// resources + resources/subscribe
     ├── prompts.ts               # MCP prompts (text from ai-core's PROMPTS)
     ├── regex-search.ts          # regex log search in a killable worker thread
@@ -98,7 +100,9 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 ## Architecture Patterns
 
 - Each `tools/*.ts` file exports `register: RegisterTools`, a `(tool, client)` function. `tool` is the registrar from `createRegistrar()`, a thin wrapper over `McpServer.registerTool` that skips non-read-only tools in read-only mode.
-- Every tool must declare `title`, `description` and `annotations` (with `readOnlyHint`; write tools also set `destructiveHint`). Use the `READ` / `READ_REGISTRY` presets for read-only tools.
+- Every tool must declare `title`, `description` and `annotations` (with `readOnlyHint`; write tools also set `destructiveHint`). Use the `READ` / `READ_REGISTRY` presets for read-only tools. Write tools need the `admin` token scope unless they set `scope: 'control'` (everyday device control).
+- Writes that unlock, open or disarm something go through the destructive `set_security_accessory`; `set_accessory` refuses them.
+- Homebridge-sourced free text (logs, changelogs) is returned through `untrusted()` / `untrustedResult()`; `runAgent` wraps every tool result it sends to the model.
 - Wrap handlers in `handle('<verb>ing <thing>', async (args) => ...)` and return `jsonResult()` / `textResult()` / `errorResult()`. Output is compact JSON.
 - `HomebridgeClient` handles all HTTP communication with the Homebridge REST API: JWT auth with a single shared login/refresh, one retry on 401, and a per-request timeout.
 - The CLI uses stdio (`StdioServerTransport`; stdout is the protocol, so log only to stderr) or Streamable HTTP (`--http`, one McpServer per session, bearer token required).
@@ -111,7 +115,10 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 - `HOMEBRIDGE_TOKEN` — Homebridge UI API token (replaces username/password)
 - `HOMEBRIDGE_USERNAME` — login username
 - `HOMEBRIDGE_PASSWORD` — login password
-- `HOMEBRIDGE_AI_MCP_TOKEN` — bearer token required by `mcp --http`
+- `HOMEBRIDGE_AI_MCP_TOKEN` — bearer token required by `mcp --http` (scope `admin`, or `read` when read-only)
+- `HOMEBRIDGE_AI_MCP_TOKENS` — optional; more `--http` tokens as `scope:token` pairs (`read` / `control` / `admin`), comma-separated
+- `HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS`, `HOMEBRIDGE_AI_MCP_MAX_SESSIONS`, `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES` — optional `--http` limits
+- `HOMEBRIDGE_AI_AUDIT_LOG` — optional; JSONL audit log path for write tool calls
 - `HOMEBRIDGE_READ_ONLY` — optional; `true` registers only read-only tools
 - `HOMEBRIDGE_ALLOW_SECRETS` — optional; `true` lets `get_config` return real secrets (`includeSecrets`), never in read-only mode
 - `HOMEBRIDGE_TIMEOUT_MS` — optional; request timeout (default 30000)

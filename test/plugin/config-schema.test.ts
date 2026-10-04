@@ -29,6 +29,10 @@ const FULL_BLOCK = {
       homebridgeCertFingerprint: 'AB:CD',
       homebridgeCertPath: '/certs/ui.pem',
       allowedOrigins: ['https://dash.local'],
+      readOnly: true,
+      clients: [{ name: 'Dashboard', token: 'r', scope: 'read' }],
+      auditLog: true,
+      auditLogPath: '/var/lib/homebridge/audit.jsonl',
     },
   },
 };
@@ -44,6 +48,12 @@ describe('config.schema.json', () => {
     const fields = Object.keys(top).filter((key) => key !== 'platform');
     expect(Object.keys(schema.schema.properties!)).toEqual(expect.arrayContaining(fields));
     expect(Object.keys(schema.schema.properties!.mcp.properties!.http.properties!)).toEqual(expect.arrayContaining(Object.keys(mcp.http)));
+  });
+
+  it('describes every field of a client token', () => {
+    const { mcp } = resolveAiConfig(FULL_BLOCK);
+    const item = (schema.schema.properties!.mcp.properties!.http.properties!.clients as SchemaNode & { items: SchemaNode }).items;
+    expect(Object.keys(item.properties!)).toEqual(expect.arrayContaining(Object.keys(mcp.http.clients![0])));
   });
 
   it('keeps the API token id Glass UI stores to revoke the token', () => {

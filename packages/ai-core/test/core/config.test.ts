@@ -17,7 +17,7 @@ describe('resolveAiConfig', () => {
       provider: 'anthropic',
       model: 'claude-sonnet-5-5',
       maxOutputTokens: 2048,
-      mcp: { http: { enabled: false, host: '127.0.0.1', port: 8582 } },
+      mcp: { http: { enabled: false, host: '127.0.0.1', port: 8582, readOnly: false, auditLog: true } },
     });
     expect(resolveAiConfig('nonsense').provider).toBe('anthropic');
   });
@@ -57,6 +57,28 @@ describe('resolveAiConfig', () => {
     expect(config.mcp.http.token).toBeUndefined();
     expect(resolveAiConfig({ mcp: { http: { allowedOrigins: [] } } }).mcp.http.allowedOrigins).toBeUndefined();
     expect(resolveAiConfig({ mcp: { http: { allowedOrigins: 7 } } }).mcp.http.allowedOrigins).toBeUndefined();
+  });
+
+  it('reads read-only mode, scoped client tokens and the audit log settings', () => {
+    const http = resolveAiConfig({
+      mcp: {
+        http: {
+          readOnly: true,
+          auditLog: false,
+          auditLogPath: ' /var/log/audit.jsonl ',
+          clients: [{ name: 'Dashboard', token: ' r ', scope: 'read' }, { token: 'c', scope: 'control' }, { token: 'x' }, { name: 'empty row' }, 'junk'],
+        },
+      },
+    }).mcp.http;
+    expect(http).toMatchObject({
+      readOnly: true,
+      auditLog: false,
+      auditLogPath: '/var/log/audit.jsonl',
+      clients: [{ name: 'Dashboard', token: 'r', scope: 'read' }, { token: 'c', scope: 'control' }, { token: 'x', scope: 'read' }],
+    });
+    expect(resolveAiConfig({ mcp: { http: { clients: [{ name: 'x' }] } } }).mcp.http.clients).toBeUndefined();
+    expect(resolveAiConfig({ mcp: { http: { clients: 'x' } } }).mcp.http.clients).toBeUndefined();
+    expect(() => resolveAiConfig({ mcp: { http: { clients: [{ token: 't', scope: 'root' }] } } })).toThrow('mcp.http.clients[0].scope must be one of read, control, admin');
   });
 
   it('rejects unknown providers and bad numbers', () => {

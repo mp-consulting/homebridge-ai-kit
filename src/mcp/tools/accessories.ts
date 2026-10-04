@@ -213,6 +213,7 @@ export const register: RegisterTools = (tool, client) => {
       },
       // Lights, switches, thermostats: changes device state but nothing that unlocks or opens.
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      scope: 'control',
     },
     handle('setting accessory', async ({ uniqueId, characteristicType, value }) => setCharacteristic(uniqueId, characteristicType, value, false)),
   );
@@ -233,6 +234,7 @@ export const register: RegisterTools = (tool, client) => {
       },
       // Unlocking a door or disarming an alarm is a physical-security risk: destructive, so clients confirm.
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+      scope: 'control',
     },
     handle('setting accessory', async ({ uniqueId, characteristicType, value }) => setCharacteristic(uniqueId, characteristicType, value, true)),
   );

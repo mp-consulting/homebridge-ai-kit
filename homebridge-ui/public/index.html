@@ -147,6 +147,23 @@
               <div class="form-text">Or a PEM file with the UI's certificate or its CA.</div>
             </div>
           </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="http-read-only">
+            <label class="form-check-label" for="http-read-only">Read-only: clients can look but change nothing</label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label mp-label" for="http-allowed-origins">Allowed browser origins</label>
+            <input class="form-control" id="http-allowed-origins" placeholder="https://my-dashboard.local" spellcheck="false">
+            <div class="form-text">Comma-separated. Only for web pages calling the server; desktop clients, localhost pages and this server's own IP are always allowed.</div>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="http-audit-log">
+            <label class="form-check-label" for="http-audit-log">Audit log of every change clients make</label>
+          </div>
+          <div class="mb-3" id="http-audit-log-path-group">
+            <input class="form-control" id="http-audit-log-path" placeholder="&lt;Homebridge storage&gt;/homebridge-ai-kit-audit.jsonl" spellcheck="false" aria-label="Audit log file">
+            <div class="form-text">JSON Lines, secrets hidden, rotated at 5 MB. Extra tokens with read or control access go in <code>mcp.http.clients</code> in the JSON config.</div>
+          </div>
         </div>
 
         <ul class="nav nav-tabs mp-tabs" role="tablist">

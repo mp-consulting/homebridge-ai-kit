@@ -1,6 +1,10 @@
 import type { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import { redactSecrets, redactText } from '@mp-consulting/homebridge-ai-core';
+import type { AuditSink } from '../audit.js';
+import type { Scope } from '../scopes.js';
+import { scopeAllows } from '../scopes.js';
 
 export interface ToolConfig<Args extends ZodRawShapeCompat | undefined> {
   title: string;
@@ -8,22 +12,79 @@ export interface ToolConfig<Args extends ZodRawShapeCompat | undefined> {
   inputSchema?: Args;
   /** Required so every tool states whether it reads or writes. */
   annotations: ToolAnnotations & { readOnlyHint: boolean };
+  /**
+   * Token scope a write tool needs (read-only tools need `read`). Default
+   * `admin`; everyday device control is `control`. Not sent to clients.
+   */
+  scope?: Exclude<Scope, 'read'>;
 }
 
-/** Registers a tool, or silently skips it when the server runs read-only and the tool writes. */
+export interface RegistrarOptions {
+  /** Same as `scope: 'read'`. */
+  readOnly?: boolean;
+  /** Tools needing more than this are not registered. Default `admin`. */
+  scope?: Scope;
+  /** Records every write tool call. */
+  audit?: AuditSink;
+  /** Which token the session uses, for the audit log. */
+  principal?: string;
+}
+
+/** Registers a tool, or silently skips it when the session's scope (or read-only mode) doesn't allow it. */
 export type ToolRegistrar = <Args extends ZodRawShapeCompat | undefined = undefined>(
   name: string,
   config: ToolConfig<Args>,
   cb: ToolCallback<Args>,
 ) => void;
 
-export function createRegistrar(server: McpServer, { readOnly = false }: { readOnly?: boolean } = {}): ToolRegistrar {
+export function createRegistrar(server: McpServer, options: RegistrarOptions = {}): ToolRegistrar {
+  const granted: Scope = options.readOnly ? 'read' : (options.scope ?? 'admin');
+  const { audit, principal } = options;
   return (name, config, cb) => {
-    if (readOnly && !config.annotations.readOnlyHint) {
+    const { scope, ...mcpConfig } = config;
+    const required: Scope = config.annotations.readOnlyHint ? 'read' : (scope ?? 'admin');
+    if (!scopeAllows(granted, required)) {
       return;
     }
-    server.registerTool(name, config, cb);
+    server.registerTool(name, mcpConfig, audit && required !== 'read' ? audited(name, cb, config.inputSchema !== undefined) : cb);
   };
+
+  /** Wraps a write tool's callback so every call lands in the audit log. */
+  function audited<C>(tool: string, cb: C, hasArgs: boolean): C {
+    const run = cb as unknown as (...params: unknown[]) => Promise<CallToolResult>;
+    return (async (...params: unknown[]) => {
+      const args = hasArgs ? params[0] : {};
+      const extra = (hasArgs ? params[1] : params[0]) as { sessionId?: string } | undefined;
+      let result: CallToolResult | undefined;
+      try {
+        result = await run(...params);
+        return result;
+      } finally {
+        const client = server.server.getClientVersion();
+        const errorText = !result
+          ? 'threw an exception'
+          : result.isError
+            ? (result.content ?? []).map((c) => (c.type === 'text' ? c.text : '')).join('\n')
+            : undefined;
+        const entry = {
+          ts: new Date().toISOString(),
+          tool,
+          args: redactSecrets(args),
+          ok: errorText === undefined,
+          ...(errorText !== undefined ? { error: redactText(errorText).slice(0, 500) } : {}),
+          ...(extra?.sessionId ? { session: extra.sessionId } : {}),
+          ...(client ? { client: `${client.name}/${client.version}` } : {}),
+          ...(principal ? { principal } : {}),
+          scope: granted,
+        };
+        try {
+          await audit!.record(entry);
+        } catch {
+          // A broken audit sink must not turn a successful write into a failure.
+        }
+      }
+    }) as unknown as C;
+  }
 }
 
 // ── Annotation presets ─────────────────────────────────────────────
