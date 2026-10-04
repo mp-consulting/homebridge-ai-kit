@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Config safety.** `update_config` and `patch_config` take `dryRun: true`, which returns what would change without writing: a list of changed JSON paths and a unified diff of the pretty-printed file, both with secrets redacted. Every real write now names the config.json backup the Homebridge UI made of the previous file (both Homebridge UI and Glass UI copy config.json to `backups/config-backups` before each save, so no local store is needed), with the `restore_config` call that undoes it.
+- **New MCP tools `list_config_backups`** (read-only, `GET /api/config-editor/backups`) **and `restore_config`** (destructive; reads `GET /api/config-editor/backups/:id` and saves it, so the replaced file is itself backed up; supports `dryRun`).
+- **New MCP tools `create_backup` and `list_backups`**: create a full instance backup in the UI's backup directory (`POST /api/backup`) and list those backups (`GET /api/backup/scheduled-backups`). A UI without these routes gets a clear "requires Homebridge Glass UI" error.
+- `HomebridgeClient` throws a `HomebridgeApiError` (with `status`, `method`, `path`, `body` and `missingRoute`) for non-2xx answers, same message as before; `requireGlassUi()` turns a missing route into a readable error.
+
+### Changed
+
+- `update_config` no longer echoes the Homebridge UI's answer, which is the saved file with its secrets; it returns a short confirmation instead.
+
 ## [2.1.0] - 2026-10-04
 
 ### Added

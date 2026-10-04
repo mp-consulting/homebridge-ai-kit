@@ -45,6 +45,15 @@ const CLIENT_METHODS = [
   'getChildBridges',
   'controlChildBridge',
   'accessToken',
+  'listConfigBackups',
+  'getConfigBackup',
+  'createInstanceBackup',
+  'listInstanceBackups',
+  'listScenes',
+  'runScene',
+  'createScene',
+  'getChildBridgeHealth',
+  'sendTestNotification',
 ] as const satisfies ReadonlyArray<keyof HomebridgeClient>;
 
 /** A HomebridgeClient whose every method is a `vi.fn()`, with optional overrides. */
