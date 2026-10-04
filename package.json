@@ -1,15 +1,28 @@
 {
-  "name": "@mp-consulting/homebridge-mcp-server",
-  "version": "1.2.2",
-  "description": "MCP (Model Context Protocol) server for Homebridge — control smart home accessories, manage plugins, and monitor your Homebridge server from AI assistants.",
+  "name": "@mp-consulting/homebridge-ai-kit",
+  "version": "2.0.0",
+  "description": "AI toolkit for Homebridge — an MCP server that lets AI assistants control accessories, manage plugins and monitor Homebridge, plus the shared AI building blocks used by Homebridge Glass UI and MP Consulting plugins.",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
-    "homebridge-mcp-server": "dist/index.js"
+    "homebridge-ai-kit": "dist/bin/homebridge-ai-kit.js",
+    "homebridge-mcp-server": "dist/bin/homebridge-mcp-server.js"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
+    "dev": "tsx src/bin/homebridge-ai-kit.ts mcp",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -18,12 +31,14 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "mcp",
-    "model-context-protocol",
     "homebridge",
+    "homebridge-plugin",
     "homekit",
     "smart-home",
     "ai",
+    "llm",
+    "mcp",
+    "model-context-protocol",
     "claude",
     "anthropic"
   ],
@@ -31,7 +46,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mp-consulting/homebridge-mcp-server.git"
+    "url": "git+https://github.com/mp-consulting/homebridge-ai-kit.git"
   },
   "funding": {
     "type": "paypal",

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { register } from '../../src/tools/server.js';
+import { register } from '../../../src/mcp/tools/server.js';
 import { collectHandlers, collectTools, mockClient } from '../helpers.js';
 
 function handlersFor(overrides: Parameters<typeof mockClient>[0] = {}) {

@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
-import type { HomebridgeClient } from '../src/homebridge-client.js';
-import type { RegisterTools } from '../src/types.js';
-import type { ToolConfig, ToolRegistrar } from '../src/tools/helpers.js';
+import type { HomebridgeClient } from '../../src/mcp/homebridge-client.js';
+import type { RegisterTools } from '../../src/mcp/types.js';
+import type { ToolConfig, ToolRegistrar } from '../../src/mcp/tools/helpers.js';
 
 export interface ToolResult {
   content: Array<{ type: string; text: string }>;

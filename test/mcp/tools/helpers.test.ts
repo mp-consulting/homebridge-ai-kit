@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { errorMessage, handle, jsonResult, pick } from '../../src/tools/helpers.js';
+import { errorMessage, handle, jsonResult, pick } from '../../../src/mcp/tools/helpers.js';
 
 describe('tool helpers', () => {
   it('errorMessage uses the message of an Error and stringifies anything else', () => {

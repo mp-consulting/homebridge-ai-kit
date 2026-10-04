@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RegexTimeoutError, regexSearch } from '../src/regex-search.js';
+import { RegexTimeoutError, regexSearch } from '../../src/mcp/regex-search.js';
 
 describe('regexSearch', () => {
   it('returns the indices of matching lines', async () => {

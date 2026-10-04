@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { HomebridgeClient } from '../../src/homebridge-client.js';
-import { SEARCH_BUDGET_MS, register } from '../../src/tools/logs.js';
+import type { HomebridgeClient } from '../../../src/mcp/homebridge-client.js';
+import { SEARCH_BUDGET_MS, register } from '../../../src/mcp/tools/logs.js';
 import { collectHandlers } from '../helpers.js';
 
 const ESC = '\u001B';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { REDACTED, SecretRestoreError, containsRedacted, redactSecrets, restoreSecrets } from '../src/config-secrets.js';
+import { REDACTED, SecretRestoreError, containsRedacted, redactSecrets, restoreSecrets } from '../../src/core/redaction.js';
 
 describe('redactSecrets', () => {
   it('redacts secret-looking keys at any depth', () => {
