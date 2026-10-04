@@ -90,7 +90,7 @@ export class AiKitPlatform {
       return;
     }
     try {
-      this.http = await runHttpServer({ host: http.host, port: http.port, token, client });
+      this.http = await runHttpServer({ host: http.host, port: http.port, token, client, allowedOrigins: http.allowedOrigins });
       this.log.info(`MCP server listening at ${this.http.url}`);
     } catch (error) {
       this.log.error(`MCP over HTTP not started: ${(error as Error).message}`);

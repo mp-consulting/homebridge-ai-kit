@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **The HTTP MCP server checks the `Origin` header**, as the MCP Streamable HTTP spec requires, so a web page can't reach it through DNS rebinding. Requests without `Origin` (desktop clients) are unaffected; browser requests must come from a loopback origin, the server's own IP address, or an origin listed in the new `allowedOrigins` option (`HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS`, plugin: `mcp.http.allowedOrigins`). Others get `403`.
+- **Repeated bad tokens are slowed down.** After 5 failed attempts from one address, the server answers `429` with `Retry-After`, doubling the wait up to 5 minutes; a correct token resets the count.
+
+### Changed
+
+- **HTTP sessions expire.** A session with no request for 30 minutes is closed (`sessionIdleMs`, `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES`), and at most 32 stay open (`maxSessions`, `HOMEBRIDGE_AI_MCP_MAX_SESSIONS`); the least recently used idle session makes room for a new one. Sessions with an open stream are never idle.
+- **One change feed for all HTTP sessions.** Sessions subscribed to the same resource now share a single socket.io connection (or poller) to Homebridge instead of opening one each. `./mcp` exports `shareLiveSource()`.
+
 ## [2.1.0] - 2026-10-04
 
 ### Added

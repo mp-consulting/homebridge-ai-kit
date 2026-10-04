@@ -46,6 +46,8 @@ export interface McpHttpConfig {
   homebridgeCertFingerprint?: string;
   /** PEM file with the https Homebridge UI's own certificate or its CA, to trust. */
   homebridgeCertPath?: string;
+  /** Browser origins allowed to call the MCP server besides loopback and its own IP address (`*` for any). */
+  allowedOrigins?: string[];
 }
 
 export interface AiConfig {
@@ -69,6 +71,13 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined;
+}
+
+/** A list of non-empty strings from an array or a comma-separated string. */
+function strList(v: unknown): string[] | undefined {
+  const items = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : [];
+  const out = items.map(str).filter((x): x is string => x !== undefined);
+  return out.length ? out : undefined;
 }
 
 function positiveInt(v: unknown, name: string): number | undefined {
@@ -122,6 +131,10 @@ export function resolveAiConfig(block: unknown = {}): AiConfig {
     if (value !== undefined) {
       config.mcp.http[key] = value;
     }
+  }
+  const allowedOrigins = strList(http.allowedOrigins);
+  if (allowedOrigins) {
+    config.mcp.http.allowedOrigins = allowedOrigins;
   }
   return config;
 }
