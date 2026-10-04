@@ -1,22 +1,13 @@
 {
   "name": "@mp-consulting/homebridge-mcp-server",
-  "version": "1.2.2",
-  "description": "MCP (Model Context Protocol) server for Homebridge — control smart home accessories, manage plugins, and monitor your Homebridge server from AI assistants.",
+  "version": "1.3.0",
+  "description": "Renamed to @mp-consulting/homebridge-ai-kit. This release only runs the new package.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "index.js",
   "bin": {
-    "homebridge-mcp-server": "dist/index.js"
+    "homebridge-mcp-server": "bin/homebridge-mcp-server.js"
   },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc -p tsconfig.test.json",
-    "prepublishOnly": "npm run build"
-  },
+  "scripts": {},
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -31,30 +22,24 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mp-consulting/homebridge-mcp-server.git"
+    "url": "git+https://github.com/mp-consulting/homebridge-ai-kit.git"
   },
   "funding": {
     "type": "paypal",
     "url": "https://paypal.me/mickaelpalma"
   },
   "files": [
-    "dist"
+    "index.js",
+    "bin"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.5.4"
-  },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^26.5.0",
-    "@vitest/coverage-v8": "^5.0.0",
-    "eslint": "^10.10.0",
-    "tsx": "^4.23.13",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.0",
-    "vitest": "^5.0.0"
+    "@mp-consulting/homebridge-ai-kit": "^2.0.0"
   },
   "engines": {
     "node": "^22.10.0 || ^24.0.0 || ^26.0.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
   }
 }

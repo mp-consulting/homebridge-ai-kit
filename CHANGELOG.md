@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - Unreleased
+
+### Deprecated
+
+- **Renamed to `@mp-consulting/homebridge-ai-kit`.** This last release has no code of its own: it depends on `@mp-consulting/homebridge-ai-kit` ^2.0.0, and its `homebridge-mcp-server` command runs that package's MCP server (printing a one-line notice to stderr), so existing MCP client configs keep working. Its main export re-exports `@mp-consulting/homebridge-ai-kit/mcp`.
+
 ## [1.2.2] - 2026-10-03
 
 ### Changed
