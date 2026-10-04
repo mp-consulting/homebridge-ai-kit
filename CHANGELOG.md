@@ -7,14 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-
-- **Unlocking a door now needs the user's consent.** `set_accessory` is non-destructive, so MCP clients and `runAgent` never asked before it unlocked a lock, opened a garage door or disarmed an alarm. Those writes (`LockTargetState`, `TargetDoorState`, `SecuritySystemTargetState`, and any characteristic of a `LockMechanism`, `LockManagement`, `GarageDoorOpener` or `SecuritySystem` service) now go through the new **`set_security_accessory`** tool, annotated `destructiveHint: true`, and `set_accessory` refuses them with a pointer to it. A separate tool rather than a per-call check keeps the MCP annotations truthful for every client, not just `runAgent`; light and switch writes still don't prompt. 33 tools in all.
-- **Read-only mode no longer hands out secrets.** `get_config`'s `includeSecrets` returned real passwords and tokens even with `HOMEBRIDGE_READ_ONLY`. It now only exists when the server opts in with `HOMEBRIDGE_ALLOW_SECRETS=true` (`allowSecrets` for `createServer` / `runHttpServer`), and never in read-only mode; otherwise the parameter is gone and secrets stay redacted. `runAgent` never allows it.
-- **Prompt-injection hardening.** Homebridge-sourced free text (`get_recent_logs`, `search_logs`, `get_plugin_changelog`) is wrapped in `<untrusted-data source="…">` delimiters, and `runAgent` wraps every tool result it sends to the model the same way (the `toolCalls` it returns keep the raw text). A delimiter inside the data is defused so it can't close the block early. The shared base system prompt (`PROMPTS.base`, from ai-core) now says tool output is untrusted data, never to follow instructions in it, and to change devices, config or plugins only when the user asked.
-- **The HTTP MCP server checks the `Origin` header**, as the MCP Streamable HTTP spec requires, so a web page can't reach it through DNS rebinding. Requests without `Origin` (desktop clients) are unaffected; browser requests must come from a loopback origin, the server's own IP address, or an origin listed in the new `allowedOrigins` option (`HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS`, plugin: `mcp.http.allowedOrigins`). Others get `403`.
-- **Repeated bad tokens are slowed down.** After 5 failed attempts from one address, the server answers `429` with `Retry-After`, doubling the wait up to 5 minutes; a correct token resets the count.
-
 ### Added
 
 - **Scoped client tokens.** Besides the main client token (still full access), the HTTP MCP server takes more tokens, each `read` (read-only tools), `control` (plus `set_accessory` / `set_security_accessory`) or `admin` (everything): `clients` option, `mcp.http.clients` (`{ name, token, scope }`), or `HOMEBRIDGE_AI_MCP_TOKENS=read:abc,control:def` for the CLI. A session belongs to the token that opened it (`403` for another token). Tools declare the scope they need with a new `scope` field in their config (write tools default to `admin`); `createServer` takes `scope`.
@@ -22,15 +14,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audit log of write tool calls**: one JSON object per line with time, tool, arguments (secrets redacted with `redactSecrets`), result (`ok` / `error`), MCP session, client name, token name and scope. The plugin writes it to `<Homebridge storage>/homebridge-ai-kit-audit.jsonl` by default (`mcp.http.auditLog`, `mcp.http.auditLogPath`); the CLI with `HOMEBRIDGE_AI_AUDIT_LOG=<path>`. It rotates at 5 MB, keeping three old files. `./mcp` exports `createAuditLog()`, and `createServer` / `runHttpServer` take any `audit` sink.
 - The plugin's settings page has switches for read-only and the audit log, the audit log path and the allowed browser origins (scoped tokens are edited in the JSON config).
 
+### Changed
+
+- **HTTP sessions expire.** A session with no request for 30 minutes is closed (`sessionIdleMs`, `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES`), and at most 32 stay open (`maxSessions`, `HOMEBRIDGE_AI_MCP_MAX_SESSIONS`); the least recently used idle session makes room for a new one. Sessions with an open stream are never idle.
+- **One change feed for all HTTP sessions.** Sessions subscribed to the same resource now share a single socket.io connection (or poller) to Homebridge instead of opening one each. `./mcp` exports `shareLiveSource()`.
+
+- **Behaviour changes for clients:** `set_accessory` now refuses locks, garage doors and security systems (use `set_security_accessory`), and `get_config` only offers `includeSecrets` with `HOMEBRIDGE_ALLOW_SECRETS`. Library callers of `createServer` / `runHttpServer` must pass `allowSecrets: true` to keep returning secrets.
+- Needs the unreleased `@mp-consulting/homebridge-ai-core` changes in this workspace (new `mcp.http` settings and the base prompt rule); release ai-core first and raise the dependency.
+- Tests cover the MCP prompts, the CLI's env parsing (`stdio.ts`) and the custom UI server (`homebridge-ui/server.js`).
+
 ### Fixed
 
 - **The settings page follows your Homebridge theme.** It applied the system's light/dark preference (after hard-coding dark in the markup) and ignored the Homebridge user setting; it now applies the user's light, dark or auto setting (`homebridge.getUserSettings()` where available, else `userCurrentLightingMode()`), following the system in auto mode and when it changes.
 - The settings page no longer loads `lib/ai.css` on top of `lib/kit.css`, which already contains the Assistant components, and its theme script and styles moved from inline blocks into same-origin files (`js/theme.js`, `css/app.css`) so they work under the Homebridge UI's content-security policy.
 
-### Changed
+### Security
 
-- **HTTP sessions expire.** A session with no request for 30 minutes is closed (`sessionIdleMs`, `HOMEBRIDGE_AI_MCP_SESSION_IDLE_MINUTES`), and at most 32 stay open (`maxSessions`, `HOMEBRIDGE_AI_MCP_MAX_SESSIONS`); the least recently used idle session makes room for a new one. Sessions with an open stream are never idle.
-- **One change feed for all HTTP sessions.** Sessions subscribed to the same resource now share a single socket.io connection (or poller) to Homebridge instead of opening one each. `./mcp` exports `shareLiveSource()`.
+- **Unlocking a door now needs the user's consent.** `set_accessory` is non-destructive, so MCP clients and `runAgent` never asked before it unlocked a lock, opened a garage door or disarmed an alarm. Those writes (`LockTargetState`, `TargetDoorState`, `SecuritySystemTargetState`, and any characteristic of a `LockMechanism`, `LockManagement`, `GarageDoorOpener` or `SecuritySystem` service) now go through the new **`set_security_accessory`** tool, annotated `destructiveHint: true`, and `set_accessory` refuses them with a pointer to it. A separate tool rather than a per-call check keeps the MCP annotations truthful for every client, not just `runAgent`; light and switch writes still don't prompt. 33 tools in all.
+- **Read-only mode no longer hands out secrets.** `get_config`'s `includeSecrets` returned real passwords and tokens even with `HOMEBRIDGE_READ_ONLY`. It now only exists when the server opts in with `HOMEBRIDGE_ALLOW_SECRETS=true` (`allowSecrets` for `createServer` / `runHttpServer`), and never in read-only mode; otherwise the parameter is gone and secrets stay redacted. `runAgent` never allows it.
+- **Prompt-injection hardening.** Homebridge-sourced free text (`get_recent_logs`, `search_logs`, `get_plugin_changelog`) is wrapped in `<untrusted-data source="…">` delimiters, and `runAgent` wraps every tool result it sends to the model the same way (the `toolCalls` it returns keep the raw text). A delimiter inside the data is defused so it can't close the block early. The shared base system prompt (`PROMPTS.base`, from ai-core) now says tool output is untrusted data, never to follow instructions in it, and to change devices, config or plugins only when the user asked.
+- **The HTTP MCP server checks the `Origin` header**, as the MCP Streamable HTTP spec requires, so a web page can't reach it through DNS rebinding. Requests without `Origin` (desktop clients) are unaffected; browser requests must come from a loopback origin, the server's own IP address, or an origin listed in the new `allowedOrigins` option (`HOMEBRIDGE_AI_MCP_ALLOWED_ORIGINS`, plugin: `mcp.http.allowedOrigins`). Others get `403`.
+- **Repeated bad tokens are slowed down.** After 5 failed attempts from one address, the server answers `429` with `Retry-After`, doubling the wait up to 5 minutes; a correct token resets the count.
 
 ## [2.1.0] - 2026-10-04
 
