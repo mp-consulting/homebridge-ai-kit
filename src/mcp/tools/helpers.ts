@@ -45,6 +45,36 @@ export function jsonResult(data: unknown): CallToolResult {
   return textResult(JSON.stringify(data));
 }
 
+// ── Untrusted data ─────────────────────────────────────────────────
+
+const UNTRUSTED_TAG = 'untrusted-data';
+
+/**
+ * Wraps text that came from Homebridge (log lines, changelogs, accessory and
+ * plugin names) in `<untrusted-data source="…">` delimiters so a model can
+ * tell data from instructions (the system prompt says never to follow
+ * instructions inside them). Any delimiter inside `text` is defused, so the
+ * data can't close the block early. Already-wrapped text is returned as is.
+ */
+export function untrusted(source: string, text: string): string {
+  if (isUntrustedBlock(text)) {
+    return text;
+  }
+  const body = text.replace(new RegExp(`<(/?${UNTRUSTED_TAG})`, 'gi'), '&lt;$1');
+  return `<${UNTRUSTED_TAG} source="${source.replace(/[^\w.:/-]/g, '_')}">\n${body}\n</${UNTRUSTED_TAG}>`;
+}
+
+function isUntrustedBlock(text: string): boolean {
+  const close = `</${UNTRUSTED_TAG}>`;
+  const single = text.indexOf(close) === text.length - close.length && text.indexOf(`<${UNTRUSTED_TAG}`, 1) === -1;
+  return single && text.startsWith(`<${UNTRUSTED_TAG} `) && text.endsWith(close);
+}
+
+/** A text result holding Homebridge-sourced free text, wrapped with {@link untrusted}. */
+export function untrustedResult(source: string, text: string): CallToolResult {
+  return textResult(untrusted(source, text));
+}
+
 export function errorResult(text: string): CallToolResult {
   return { content: [{ type: 'text', text }], isError: true };
 }

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { HomebridgeClient } from '../homebridge-client.js';
 import type { RegisterTools } from '../types.js';
 import { RegexTimeoutError, regexSearch } from '../regex-search.js';
-import { READ, errorResult, handle, textResult } from './helpers.js';
+import { READ, errorResult, handle, textResult, untrusted } from './helpers.js';
 
 // The UI strips colour codes server-side, but a custom log path or an older UI
 // can still return them, so strip defensively before matching *and* displaying.
@@ -75,7 +75,7 @@ export const register: RegisterTools = (tool, client) => {
       const { lines: all, truncated } = await readLogTail(client);
       const body = all.slice(-n).join('\n');
       const note = truncationNote(truncated);
-      return textResult(note && body ? `${note}\n\n${body}` : note || body);
+      return textResult(note && body ? `${note}\n\n${untrusted('homebridge-log', body)}` : note || (body && untrusted('homebridge-log', body)));
     }),
   );
 
@@ -145,7 +145,7 @@ export const register: RegisterTools = (tool, client) => {
       }
       const header = parts.join(' ');
       const body = taken.join('\n');
-      return textResult(body ? `${header}\n\n${body}` : header);
+      return textResult(body ? `${header}\n\n${untrusted('homebridge-log', body)}` : header);
     }),
   );
 };

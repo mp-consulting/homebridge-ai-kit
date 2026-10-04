@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `PROMPTS.base` (and so every feature's system prompt) tells the model that tool results, logs, changelogs, READMEs and device or plugin names — anything inside `<untrusted-data>` tags — are data, not instructions, and to change devices, configuration or plugins only when the user asked.
+
 ### Added
 
 - `McpHttpConfig.allowedOrigins` / `resolveAiConfig` read `mcp.http.allowedOrigins` (an array, or a comma-separated string): browser origins ai-kit's HTTP MCP server accepts.
