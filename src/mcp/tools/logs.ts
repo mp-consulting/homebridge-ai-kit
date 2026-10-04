@@ -3,6 +3,7 @@ import type { HomebridgeClient } from '../homebridge-client.js';
 import type { RegisterTools } from '../types.js';
 import { RegexTimeoutError, regexSearch } from '../regex-search.js';
 import { READ, errorMessage, errorResult, handle, textResult } from './helpers.js';
+import { LOG_SEARCH } from './output-schemas.js';
 import { atLeast, parseLogLines, parseTimeBound } from '../log-parse.js';
 
 // The UI strips colour codes server-side, but a custom log path or an older UI
@@ -109,6 +110,7 @@ export const register: RegisterTools = (tool, client) => {
         plugin: z.string().min(1).optional().describe("Only lines whose [Prefix] contains this (case-insensitive), e.g. 'Hue' or 'Homebridge UI'."),
         context: z.number().int().min(0).max(20).optional().describe('Lines of context to show before and after each match (default 0).'),
       },
+      outputSchema: LOG_SEARCH,
       annotations: READ,
     },
     handle('searching Homebridge log', async ({ pattern, regex, caseSensitive, limit, since, until, level, plugin, context }) => {
@@ -184,7 +186,16 @@ export const register: RegisterTools = (tool, client) => {
       }
       const header = parts.join(' ');
       const body = context ? withContext(entries.map((e) => e.text), taken, context) : taken.map((i) => entries[i].text).join('\n');
-      return textResult(body ? `${header}\n\n${body}` : header);
+      const structured = {
+        total: matches.length,
+        shown: taken.length,
+        truncated,
+        matches: taken.map((i) => {
+          const e = entries[i];
+          return { line: i + 1, time: e.time === undefined ? null : new Date(e.time).toISOString(), level: e.level, plugin: e.prefix ?? null, text: e.text };
+        }),
+      };
+      return { ...textResult(body ? `${header}\n\n${body}` : header), structuredContent: structured };
     }),
   );
 };

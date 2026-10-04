@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Accessory, CharacteristicInfo, RegisterTools } from '../types.js';
-import { READ, errorResult, handle, jsonResult } from './helpers.js';
+import { READ, asObject, errorResult, handle, jsonResult, structuredResult } from './helpers.js';
+import { ACCESSORY, ACCESSORY_LIST } from './output-schemas.js';
 import { accessoryFilterShape, selectAccessories } from '../accessory-select.js';
 
 function compactAccessory(acc: Accessory) {
@@ -82,6 +83,7 @@ export const register: RegisterTools = (tool, client) => {
       title: 'List accessories',
       description: 'List all Homebridge accessories with their current state (on/off, brightness, temperature, etc.)',
       inputSchema: accessoryFilterShape,
+      outputSchema: ACCESSORY_LIST,
       annotations: READ,
     },
     handle('listing accessories', async (filter) => {
@@ -90,7 +92,8 @@ export const register: RegisterTools = (tool, client) => {
         return errorResult(selected.error);
       }
       const { accessories } = selected;
-      return jsonResult(accessories.map(compactAccessory));
+      const list = accessories.map(compactAccessory);
+      return structuredResult({ accessories: list }, list);
     }),
   );
 
@@ -100,9 +103,13 @@ export const register: RegisterTools = (tool, client) => {
       title: 'Get accessory',
       description: 'Get detailed information about a specific accessory by its uniqueId. Use list_accessories first to find the uniqueId.',
       inputSchema: { uniqueId: z.string().min(1).describe('The unique identifier of the accessory') },
+      outputSchema: ACCESSORY,
       annotations: READ,
     },
-    handle('getting accessory', async ({ uniqueId }) => jsonResult(await client.getAccessory(uniqueId))),
+    handle('getting accessory', async ({ uniqueId }) => {
+      const accessory = await client.getAccessory(uniqueId);
+      return structuredResult(asObject(accessory), accessory);
+    }),
   );
 
   tool(

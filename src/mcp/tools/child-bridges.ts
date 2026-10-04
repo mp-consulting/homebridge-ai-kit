@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { RegisterTools } from '../types.js';
 import { requireGlassUi } from '../homebridge-client.js';
-import { READ, handle, jsonResult, pick, textResult } from './helpers.js';
+import { READ, handle, pick, structuredResult, textResult } from './helpers.js';
+import { CHILD_BRIDGE_HEALTH, CHILD_BRIDGE_LIST } from './output-schemas.js';
 
 /** What is shown of a child bridge: never its HomeKit/Matter pairing codes. */
 export const CHILD_BRIDGE_FIELDS = ['username', 'name', 'plugin', 'identifier', 'status', 'paired', 'pid', 'port', 'manuallyStopped'] as const;
@@ -17,9 +18,13 @@ export const register: RegisterTools = (tool, client) => {
     {
       title: 'List child bridges',
       description: 'List the child bridges (plugins running in their own process) with their status (ok, pending, down) and whether they were stopped manually.',
+      outputSchema: CHILD_BRIDGE_LIST,
       annotations: READ,
     },
-    handle('listing child bridges', async () => jsonResult((await client.getChildBridges()).map((b) => pick(b, CHILD_BRIDGE_FIELDS)))),
+    handle('listing child bridges', async () => {
+      const list = (await client.getChildBridges()).map((b) => pick(b, CHILD_BRIDGE_FIELDS));
+      return structuredResult({ childBridges: list }, list);
+    }),
   );
 
   tool(
@@ -30,16 +35,17 @@ export const register: RegisterTools = (tool, client) => {
         'Health of each child bridge: status, uptime, restart and crash counts, and whether it is crash-looping (3 unrequested crashes in 10 minutes). ' +
         'Counts start when the UI starts. Pass deviceId for one bridge. Requires Homebridge Glass UI (admin).',
       inputSchema: { deviceId: deviceId.optional() },
+      outputSchema: CHILD_BRIDGE_HEALTH,
       annotations: READ,
     },
     handle('getting child bridge health', async ({ deviceId }) => {
       const report = await requireGlassUi('Child bridge health', () => client.getChildBridgeHealth());
       if (!deviceId) {
-        return jsonResult(report);
+        return structuredResult({ ...report });
       }
       const norm = (id: string) => id.replace(/:/g, '').toUpperCase();
       const bridges = report.bridges.filter((b) => norm(b.username) === norm(deviceId));
-      return jsonResult({ ...report, bridges });
+      return structuredResult({ ...report, bridges });
     }),
   );
 

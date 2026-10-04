@@ -3,7 +3,8 @@ import type { HomebridgeClient } from '../homebridge-client.js';
 import { requireGlassUi } from '../homebridge-client.js';
 import type { RegisterTools, Scene } from '../types.js';
 import { isSecurityCharacteristic } from '../accessory-select.js';
-import { READ, errorResult, handle, jsonResult } from './helpers.js';
+import { READ, errorResult, handle, jsonResult, structuredResult } from './helpers.js';
+import { SCENE_LIST } from './output-schemas.js';
 
 /** Glass UI's limit on actions per scene. */
 export const MAX_SCENE_ACTIONS = 50;
@@ -31,9 +32,13 @@ export const register: RegisterTools = (tool, client) => {
       title: 'List scenes',
       description:
         'List the Homebridge Glass UI scenes: named sets of accessory values applied together, with their actions, cron schedules and last run. Requires Homebridge Glass UI.',
+      outputSchema: SCENE_LIST,
       annotations: READ,
     },
-    handle('listing scenes', async () => jsonResult(await listScenes(client))),
+    handle('listing scenes', async () => {
+      const scenes = await listScenes(client);
+      return structuredResult({ scenes }, scenes);
+    }),
   );
 
   tool(
