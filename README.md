@@ -1,160 +1,224 @@
 # @mp-consulting/homebridge-ai-kit
 
-AI toolkit for [Homebridge](https://homebridge.io). It ships an MCP (Model Context Protocol) server that lets AI assistants like Claude control your smart home accessories, manage plugins, edit configuration and monitor your Homebridge server, plus the shared AI building blocks used by Homebridge Glass UI and the MP Consulting plugins.
+AI toolkit for [Homebridge](https://homebridge.io), in one package:
+
+- **An MCP server** that lets AI assistants (Claude Desktop, Claude Code, Cursor) control accessories, manage plugins, edit configuration and read logs, over stdio or Streamable HTTP.
+- **The Assistant**: provider adapters (Claude, OpenAI, Gemini, any OpenAI-compatible server), an agent loop wired to the MCP tools, and ready-made features (log doctor, config copilot, device-error explainer, update-risk briefing, organiser, daily digest). Homebridge Glass UI and the MP Consulting plugins use these.
+- **A Homebridge plugin** (`HomebridgeAiKit` platform) with a settings page to pick the provider and model, test the connection, serve MCP over HTTP and generate client configs.
 
 > **Renamed from `@mp-consulting/homebridge-mcp-server`.** The old `homebridge-mcp-server` command still works, so existing MCP client configs don't need to change. See [Migrating from homebridge-mcp-server](#migrating-from-homebridge-mcp-server).
 
+## Contents
+
+- [Features](#features)
+- [Providers](#providers)
+- [Homebridge plugin](#homebridge-plugin)
+- [MCP server](#mcp-server)
+- [Library API](#library-api)
+- [Security](#security)
+- [Migrating from homebridge-mcp-server](#migrating-from-homebridge-mcp-server)
+- [Development](#development)
+
 ## Features
 
-- **Accessories** — List, inspect, and control all your Homebridge accessories (lights, switches, thermostats, sensors, etc.)
-- **Server Management** — Check status, restart Homebridge, view pairing info, manage cached accessories
-- **Configuration** — Read and update your `config.json`
-- **Plugins** — List installed plugins, search npm, view config schemas and changelogs
-- **System Info** — CPU, memory, OS, and network details of the host machine
-- **Logs** — Read recent Homebridge log output and search it for errors or specific devices
+**MCP tools** (31): accessories (list, get, control with value checks, room layout), server (status, restart, pairing, cached accessories), child bridges (list, restart, stop, start), config (read with secrets redacted, full write, partial `patch_config`), plugins (list, search, versions, schema, changelog, install, update, uninstall), system info and logs (recent lines, regex search).
 
-## Prerequisites
+**MCP resources** you can subscribe to: `homebridge://accessories`, `homebridge://logs/recent`, `homebridge://status`. Changes arrive over the Homebridge UI's socket.io namespaces, or by polling when the socket can't be used.
 
-- [Homebridge](https://homebridge.io) with [homebridge-config-ui-x](https://github.com/homebridge/homebridge-config-ui-x) installed (provides the REST API)
-- Node.js 22.10+, 24 or 26
+**MCP prompts**: `diagnose-logs`, `plan-upgrade`, `audit-config`.
 
-## Installation
+**Assistant features** (library): `diagnoseLogs`, `generatePluginConfig`, `explainDeviceError`, `assessPluginUpdate`, `suggestOrganization`, `dailyDigest`, `ask`, and `runAgent` for anything that needs the tools. Every input is redacted before it reaches a provider and trimmed to fit its context window; JSON outputs are checked against a schema with one automatic repair attempt; token usage and Claude costs are tracked.
+
+## Providers
+
+All providers use plain `fetch` (no SDKs). Each declares what it can do, and features without tool calling fall back to prompt-only answers.
+
+| `provider` | Default model | API key | Tools | Streaming | Context |
+|---|---|---|---|---|---|
+| `anthropic` | `claude-sonnet-5-5` | required | yes | yes | 1M (200K for Haiku) |
+| `openai` | `gpt-5` | required | yes | yes | 128K |
+| `gemini` | `gemini-2.5-pro` | required | yes | yes | 1M |
+| `openai-compatible` | `llama3.1` | optional | yes | yes | 8K (set `contextTokens`) |
+
+- Claude models: `claude-sonnet-5-5` (default), `claude-haiku-4-5-20251001` (cheapest), `claude-opus-5-5` (most capable).
+- `openai-compatible` works with Ollama (`http://127.0.0.1:11434/v1`, the default), LM Studio (`http://127.0.0.1:1234/v1`), vLLM and similar. Set `contextTokens` to your model's context window so inputs are trimmed correctly.
+- An on-device Apple Foundation Models provider is planned.
+
+## Homebridge plugin
+
+Install it like any plugin (Homebridge 1.8+ or 2.x):
 
 ```bash
 npm install -g @mp-consulting/homebridge-ai-kit
 ```
 
-## Configuration
+Then open its settings in the Homebridge UI. The settings page edits the `HomebridgeAiKit` platform block, tests the connection with the values in the form, and shows ready-to-paste configs for Claude Desktop, Claude Code and Cursor.
 
-The server requires three environment variables:
+```jsonc
+{
+  "platform": "HomebridgeAiKit",
+  "name": "AI Kit",
+  "enabled": true,
+  "provider": "anthropic",            // anthropic | openai | gemini | openai-compatible
+  "model": "claude-sonnet-5-5",       // optional, defaults per provider
+  "apiKey": "sk-ant-…",               // secret, redacted wherever config is shown to a model
+  "baseUrl": "http://127.0.0.1:11434/v1", // openai-compatible only (or a proxy)
+  "contextTokens": 32768,             // optional override, mainly for local models
+  "maxOutputTokens": 2048,
+  "mcp": {
+    "http": {
+      "enabled": false,
+      "host": "127.0.0.1",
+      "port": 8582,
+      "token": "…",                   // bearer token MCP clients must send
+      "homebridgeUrl": "http://127.0.0.1:8581",
+      "homebridgeToken": "hbg_…"      // Glass UI API token the tools act with
+    }
+  }
+}
+```
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `HOMEBRIDGE_URL` | URL of your Homebridge UI | `http://192.168.1.100:8581` |
-| `HOMEBRIDGE_USERNAME` | Homebridge UI login username | `admin` |
-| `HOMEBRIDGE_PASSWORD` | Homebridge UI login password | `admin` |
+With `mcp.http.enabled`, the plugin serves MCP at `http://<host>:<port>/mcp` while Homebridge runs. It needs a client token (`mcp.http.token` or `HOMEBRIDGE_AI_MCP_TOKEN`) and Homebridge credentials: a Glass UI API token in `homebridgeToken`, or the `HOMEBRIDGE_*` environment variables. A read-only API token gives clients read-only access.
 
-Optional:
+### Assistant routes for other plugins
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `HOMEBRIDGE_READ_ONLY` | Set to `true` to disable every tool that changes something (`set_accessory`, `restart_homebridge`, `update_config`, `remove_cached_accessory`, `reset_cached_accessories`) | `false` |
-| `HOMEBRIDGE_TIMEOUT_MS` | How long to wait for Homebridge before a request fails | `30000` |
+A plugin's custom UI server can offer the Assistant with one call; the browser side is `MpKit.ai` from [`@mp-consulting/homebridge-ui-kit`](https://github.com/mp-consulting/homebridge-ui-kit):
 
-## Security
+```js
+// homebridge-ui/server.js
+import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
+import { registerAiRoutes } from '@mp-consulting/homebridge-ai-kit/plugin';
 
-- **Secrets stay out of the model's context.** `get_config` replaces passwords, tokens, API keys and the bridge pin with `__REDACTED__`. When the model writes the config back with `update_config`, those placeholders are swapped for the real values, so editing a plugin's settings never erases its credentials. Pass `includeSecrets: true` to `get_config` only when you actually need to see a credential.
-- **Write tools are annotated.** Every tool declares MCP `readOnlyHint` / `destructiveHint` annotations, so clients can ask for confirmation before a restart, a cache reset or a config write. Use `HOMEBRIDGE_READ_ONLY=true` to remove the write tools entirely.
-- **`update_config` rejects incomplete configs.** The object must contain a `bridge` block, so a truncated or empty object can't replace your whole `config.json`.
-- **Regex log searches are sandboxed.** `search_logs` with `regex: true` runs in a worker thread that is killed after 5 seconds, so a pathological pattern can't hang the server.
-- **Transport.** The server warns on startup if `HOMEBRIDGE_URL` sends your password over plain `http` to a host outside your local network. Prefer `https` in that case.
+class UiServer extends HomebridgePluginUiServer {
+  constructor() {
+    super();
+    registerAiRoutes(this, { pluginName: '@mp-consulting/homebridge-ewelink' });
+    this.ready();
+  }
+}
+new UiServer();
+```
 
-## Usage
+| Route | Body | Result |
+|---|---|---|
+| `/ai/status` | none | `{ enabled, provider, model, capabilities }` (never the key) |
+| `/ai/explain` | `{ error, context?, device?, requestId? }` | `{ text, usage }` |
+| `/ai/ask` | `{ prompt, context?, requestId? }` | `{ text, usage }` |
+| `/ai/config` | `{ schema, request, current?, requestId? }` | `{ config, explanation, usage }` |
 
-### Claude Desktop
+With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events, then `ai:done` `{ requestId }` or `ai:error` `{ requestId, message }`. The routes read the `HomebridgeAiKit` block from config.json on every request, so settings changes apply at once.
 
-Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+## MCP server
+
+### Environment
+
+| Variable | Description |
+|----------|-------------|
+| `HOMEBRIDGE_URL` | URL of your Homebridge UI, e.g. `http://192.168.1.100:8581` (required) |
+| `HOMEBRIDGE_TOKEN` | A Homebridge UI API token (Glass UI `hbg_…`). Replaces username and password |
+| `HOMEBRIDGE_USERNAME` / `HOMEBRIDGE_PASSWORD` | UI login, when no token is set |
+| `HOMEBRIDGE_READ_ONLY` | `true` removes every tool that changes something |
+| `HOMEBRIDGE_TIMEOUT_MS` | Request timeout (default `30000`) |
+| `HOMEBRIDGE_AI_MCP_TOKEN` | Bearer token required by `--http` |
+
+### stdio (Claude Desktop, Claude Code, Cursor)
 
 ```json
 {
   "mcpServers": {
     "homebridge": {
-      "command": "homebridge-ai-kit",
-      "args": ["mcp"],
+      "command": "npx",
+      "args": ["-y", "@mp-consulting/homebridge-ai-kit", "mcp"],
       "env": {
         "HOMEBRIDGE_URL": "http://192.168.1.100:8581",
-        "HOMEBRIDGE_USERNAME": "admin",
-        "HOMEBRIDGE_PASSWORD": "your-password"
+        "HOMEBRIDGE_TOKEN": "hbg_…"
       }
     }
   }
 }
 ```
 
-### Claude Code
-
 ```bash
-claude mcp add homebridge -- homebridge-ai-kit mcp
+claude mcp add homebridge -e HOMEBRIDGE_URL=http://192.168.1.100:8581 -e HOMEBRIDGE_TOKEN=hbg_… -- npx -y @mp-consulting/homebridge-ai-kit mcp
 ```
 
-Then set the environment variables in your shell or `.env` file.
-
-### MCP Inspector (for testing)
+### Streamable HTTP
 
 ```bash
-HOMEBRIDGE_URL=http://192.168.1.100:8581 \
-HOMEBRIDGE_USERNAME=admin \
-HOMEBRIDGE_PASSWORD=your-password \
-npx @modelcontextprotocol/inspector homebridge-ai-kit mcp
+HOMEBRIDGE_AI_MCP_TOKEN=$(openssl rand -base64 24) \
+HOMEBRIDGE_URL=http://127.0.0.1:8581 HOMEBRIDGE_TOKEN=hbg_… \
+homebridge-ai-kit mcp --http --port 8582 --host 127.0.0.1
 ```
 
-## Available Tools
+The endpoint is `http://127.0.0.1:8582/mcp`. Every request needs `Authorization: Bearer <HOMEBRIDGE_AI_MCP_TOKEN>`. It binds to `127.0.0.1` by default; only use `--host 0.0.0.0` on a trusted network, ideally behind HTTPS.
 
-### Accessories
+```bash
+claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "Authorization: Bearer <token>"
+```
 
-| Tool | Description |
-|------|-------------|
-| `list_accessories` | List all accessories with current state. Supports filtering by `room`, `type`, `name`, `manufacturer`, and `excludeManufacturer` |
-| `get_accessory` | Get detailed info for a specific accessory by `uniqueId` |
-| `set_accessory` | Control an accessory (on/off, brightness, temperature, etc.) |
-| `get_accessory_layout` | Get the room layout from the Homebridge UI |
+### Tools
 
-### Server
+| Group | Tools |
+|---|---|
+| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `get_accessory_layout` |
+| Server | `get_homebridge_status`, `get_server_status`, `restart_homebridge`, `get_pairing_info`, `get_cached_accessories`, `remove_cached_accessory`, `reset_cached_accessories` |
+| Child bridges | `list_child_bridges`, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge` |
+| Config | `get_config`, `update_config`, `patch_config` |
+| Plugins | `list_plugins`, `search_plugins`, `lookup_plugin`, `get_plugin_versions`, `get_plugin_config_schema`, `get_plugin_changelog`, `install_plugin`, `update_plugin`, `uninstall_plugin`, `get_plugin_job` |
+| System | `get_system_info` |
+| Logs | `get_recent_logs`, `search_logs` |
 
-| Tool | Description |
-|------|-------------|
-| `get_homebridge_status` | Check if Homebridge is running |
-| `get_server_status` | Get server version, uptime, Node.js version, OS details, and instance ID |
-| `restart_homebridge` | Restart the Homebridge service |
-| `get_pairing_info` | Get HomeKit pairing code / QR info |
-| `get_cached_accessories` | List cached accessories (UUID, name, plugin, platform, `cacheFile`); `verbose` for full objects |
-| `remove_cached_accessory` | Remove a specific cached accessory; pass `cacheFile` for child-bridge accessories |
-| `reset_cached_accessories` | Reset all cached accessories |
+- `set_accessory` checks the value against the characteristic first (format, min/max, step, valid values, write permission), coerces `"50"` to `50` or `1` to `true`, and explains what is wrong instead of sending a bad value.
+- `patch_config` changes one platform or accessory block (found by `platform`/`accessory` plus `name`); objects merge, `null` removes a key, and `__REDACTED__` keeps the current secret.
+- `install_plugin`, `update_plugin` and `uninstall_plugin` start a job on the Homebridge UI and wait up to two minutes for it; `get_plugin_job` follows a longer one. They need Homebridge Glass UI (`POST /api/plugins/install|update|uninstall`, `GET /api/plugins/jobs/:id`).
+- The log tools need a Homebridge install managed by [hb-service](https://github.com/homebridge/homebridge-config-ui-x/wiki/Homebridge-Service-Command).
 
-### Configuration
-
-| Tool | Description |
-|------|-------------|
-| `get_config` | Read the current config.json, with secrets redacted (`includeSecrets` to show them) |
-| `update_config` | Update config.json (full replacement; redacted placeholders keep their real values) |
-
-### Plugins
-
-| Tool | Description |
-|------|-------------|
-| `list_plugins` | List installed plugins with versions and update status; `verbose` for every field |
-| `search_plugins` | Search npm for Homebridge plugins; `verbose` for every field |
-| `lookup_plugin` | Get details about a specific plugin |
-| `get_plugin_versions` | Get available versions for a plugin |
-| `get_plugin_config_schema` | Get the configuration schema for a plugin |
-| `get_plugin_changelog` | Get the changelog for a plugin |
-
-### System
-
-| Tool | Description |
-|------|-------------|
-| `get_system_info` | Get host system information (CPU, memory, OS) |
-
-### Logs
-
-| Tool | Description |
-|------|-------------|
-| `get_recent_logs` | Return the most recent lines from the Homebridge log |
-| `search_logs` | Search the log by substring or regex, returning the most recent matches |
-
-> The log tools read the log through the Homebridge UI, so they work against a remote
-> instance like every other tool. They require a Homebridge install managed by
-> [hb-service](https://github.com/homebridge/homebridge-config-ui-x/wiki/Homebridge-Service-Command),
-> which is what makes the log file available over the API.
-
-## Library
-
-The package can also be imported:
+## Library API
 
 ```js
-import { redactSecrets, restoreSecrets } from '@mp-consulting/homebridge-ai-kit';
-import { HomebridgeClient, createServer } from '@mp-consulting/homebridge-ai-kit/mcp';
+import {
+  createProvider, readAiConfig, runAgent, diagnoseLogs, generatePluginConfig, UsageTracker,
+} from '@mp-consulting/homebridge-ai-kit';
+import { HomebridgeClient } from '@mp-consulting/homebridge-ai-kit/mcp';
+
+const config = await readAiConfig();            // HomebridgeAiKit block of ~/.homebridge/config.json
+const provider = createProvider(config);
+
+// One-shot feature, streamed
+const { text } = await diagnoseLogs({ provider, logs, onChunk: (d) => process.stdout.write(d) });
+
+// Agent with the MCP tools, acting as the current user
+const client = new HomebridgeClient({ url: 'http://127.0.0.1:8581', getToken: () => mintShortLivedToken(user) });
+const result = await runAgent({
+  provider,
+  client,
+  messages: [{ role: 'user', content: 'Turn off every light downstairs' }],
+  confirm: async (call) => askUser(`Allow ${call.name}?`), // destructive tools are refused without it
+  onEvent: (e) => console.log(e),
+});
 ```
+
+| Export | Purpose |
+|---|---|
+| `createProvider(config)` → `AiProvider` | `chat(req)` and `stream(req)` with `ChatRequest { system?, messages, tools?, maxOutputTokens?, signal? }` |
+| `runAgent(opts)` → `AgentResult` | Loops model ↔ MCP tools (in-memory transport), `maxSteps` 8 by default, `readOnly`, `confirm` for destructive tools |
+| `diagnoseLogs`, `generatePluginConfig`, `explainDeviceError`, `assessPluginUpdate`, `suggestOrganization`, `dailyDigest`, `ask` | Ready-made features; all accept `onChunk`, `signal`, `systemContext` |
+| `generateJson({ provider, schema, prompt })` | Schema-checked JSON (ajv) with one repair retry |
+| `trimToContext`, `estimateTokens` | Keep inputs inside the context window (logs keep their tail) |
+| `UsageTracker`, `costOf` | Token and cost accounting (Claude prices; unknown models cost `null`) |
+| `PROMPTS` | Prompt templates, shared with the MCP prompts |
+| `readAiConfig`, `resolveAiConfig` | Read and default the `HomebridgeAiKit` block |
+| `redactSecrets`, `restoreSecrets`, `redactText` | Keep credentials out of model context |
+
+`./mcp` exports `createServer`, `HomebridgeClient`, `runStdioServer`, `runHttpServer`, `createLiveSource`; `./plugin` exports `registerAiRoutes`, `testAiConnection`, `mcpClientSnippets` and `AiKitPlatform`.
+
+## Security
+
+- **Secrets stay out of the model's context.** `get_config`, `patch_config` and the Assistant features replace passwords, tokens, API keys (including the AI Kit `apiKey` and MCP tokens) and the bridge pin with `__REDACTED__`. Writes swap the placeholders back for the real values. Free text sent to a provider (logs, errors) has credential-shaped values masked too.
+- **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
+- **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default.
+- **`update_config` rejects incomplete configs**, and regex log searches run in a worker thread that is killed after 5 seconds.
+- The server warns if `HOMEBRIDGE_URL` sends credentials over plain `http` to a non-local host.
 
 ## Migrating from homebridge-mcp-server
 
@@ -163,19 +227,7 @@ npm uninstall -g @mp-consulting/homebridge-mcp-server
 npm install -g @mp-consulting/homebridge-ai-kit
 ```
 
-The package installs both `homebridge-ai-kit` and a `homebridge-mcp-server` alias, and the environment variables are unchanged, so existing Claude Desktop and Claude Code configs keep working. New configs should use `homebridge-ai-kit mcp`. The MCP server now reports its name as `homebridge-ai-kit`.
-
-## Example Prompts
-
-Once configured, you can ask Claude things like:
-
-- "List all my smart home accessories and their current status"
-- "Turn off the living room lights"
-- "Set the bedroom thermostat to 21 degrees"
-- "What plugins are installed on my Homebridge?"
-- "Show me the Homebridge config"
-- "Is Homebridge running? What version?"
-- "Search for a Homebridge plugin for Philips Hue"
+The package installs both `homebridge-ai-kit` and a `homebridge-mcp-server` alias, and the environment variables are unchanged, so existing configs keep working. New configs should use `homebridge-ai-kit mcp`. The MCP server now reports its name as `homebridge-ai-kit`, and library users import `createServer` and `HomebridgeClient` from `@mp-consulting/homebridge-ai-kit/mcp`.
 
 ## Development
 
@@ -183,17 +235,18 @@ Once configured, you can ask Claude things like:
 git clone https://github.com/mp-consulting/homebridge-ai-kit.git
 cd homebridge-ai-kit
 npm install
-npm run build
+npm run build          # copies the ui-kit assets into homebridge-ui/public/lib, then tsc
 ```
 
 ```bash
-npm run dev            # Run with auto-reload (tsx)
+npm run dev            # MCP server on stdio with tsx
 npm test               # Run tests
-npm run test:watch     # Run tests in watch mode
-npm run test:coverage  # Run tests with coverage thresholds (as CI does)
+npm run test:coverage  # Tests with coverage thresholds (as CI does)
 npm run lint           # ESLint
 npm run typecheck      # Type-check src and test
 ```
+
+> **Before release:** `@mp-consulting/homebridge-ui-kit` is a `file:../homebridge-ui-kit` dev dependency while ui-kit 1.2 is unpublished. Switch it to `^1.2.0` before publishing; until then `npm ci` needs the ui-kit checkout next to this repo.
 
 ## License
 
