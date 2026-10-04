@@ -2,7 +2,9 @@ import { z } from 'zod';
 import type { HomebridgeClient } from '../homebridge-client.js';
 import type { RegisterTools } from '../types.js';
 import { RegexTimeoutError, regexSearch } from '../regex-search.js';
-import { READ, errorResult, handle, textResult } from './helpers.js';
+import { READ, errorMessage, errorResult, handle, textResult } from './helpers.js';
+import { LOG_SEARCH } from './output-schemas.js';
+import { atLeast, parseLogLines, parseTimeBound } from '../log-parse.js';
 
 // The UI strips colour codes server-side, but a custom log path or an older UI
 // can still return them, so strip defensively before matching *and* displaying.
@@ -84,10 +86,12 @@ export const register: RegisterTools = (tool, client) => {
     {
       title: 'Search logs',
       description:
-        'Search the Homebridge log for matching lines. Returns up to `limit` most recent matches (ANSI-stripped). ' +
-        'Useful for finding errors, warnings, or events involving a specific device.',
+        'Search the Homebridge log. Returns up to `limit` most recent matching lines (ANSI-stripped), optionally with `context` lines around each. ' +
+        'Narrow by time (`since`/`until`: ISO or a duration back from now like 30m, 1h, 2d; log times are the Homebridge server\'s local time), ' +
+        'by minimum `level` (error > warn > info > debug, read from the log colours) and by `plugin` (the [Prefix] after the timestamp, ' +
+        'usually the platform or accessory name). `pattern` is optional when a filter is given.',
       inputSchema: {
-        pattern: z.string().min(1).describe('Substring or regex pattern to match against each log line.'),
+        pattern: z.string().min(1).optional().describe('Substring or regex pattern to match against each log line. Omit to match every line that passes the filters.'),
         regex: z
           .boolean()
           .optional()
@@ -100,29 +104,70 @@ export const register: RegisterTools = (tool, client) => {
           .max(2000)
           .optional()
           .describe('Maximum matches to return, taken from the most recent (default 100, max 2000).'),
+        since: z.string().min(1).optional().describe("Only lines at or after this time: ISO (2026-10-04T18:00) or a duration back from now ('1h', '30m', '2d')."),
+        until: z.string().min(1).optional().describe('Only lines at or before this time, same formats as since.'),
+        level: z.enum(['error', 'warn', 'info', 'debug']).optional().describe("Minimum level: 'warn' returns warnings and errors."),
+        plugin: z.string().min(1).optional().describe("Only lines whose [Prefix] contains this (case-insensitive), e.g. 'Hue' or 'Homebridge UI'."),
+        context: z.number().int().min(0).max(20).optional().describe('Lines of context to show before and after each match (default 0).'),
       },
+      outputSchema: LOG_SEARCH,
       annotations: READ,
     },
-    handle('searching Homebridge log', async ({ pattern, regex, caseSensitive, limit }) => {
+    handle('searching Homebridge log', async ({ pattern, regex, caseSensitive, limit, since, until, level, plugin, context }) => {
       const max = limit ?? 100;
       const cs = caseSensitive ?? false;
       const flags = cs ? '' : 'i';
-      const label = regex ? `/${pattern}/${flags}` : JSON.stringify(pattern) + (cs ? ' (case-sensitive)' : '');
+      const filters = [
+        since && `since ${since}`,
+        until && `until ${until}`,
+        level && `level ≥ ${level}`,
+        plugin && `plugin ~ ${JSON.stringify(plugin)}`,
+      ].filter(Boolean);
+      const what = pattern === undefined ? 'all lines' : regex ? `/${pattern}/${flags}` : JSON.stringify(pattern) + (cs ? ' (case-sensitive)' : '');
+      const label = filters.length ? `${what} (${filters.join(', ')})` : what;
 
-      if (regex) {
+      if (pattern !== undefined && regex) {
         try {
           new RegExp(pattern, flags);
         } catch (error) {
-          return errorResult(`Invalid regex ${label}: ${error}`);
+          return errorResult(`Invalid regex /${pattern}/${flags}: ${error}`);
         }
       }
+      let sinceMs: number | undefined;
+      let untilMs: number | undefined;
+      try {
+        sinceMs = since === undefined ? undefined : parseTimeBound(since);
+        untilMs = until === undefined ? undefined : parseTimeBound(until);
+      } catch (error) {
+        return errorResult(errorMessage(error));
+      }
 
-      const { lines, truncated } = await readLogTail(client);
+      // Colour is only asked for when the level matters: it is where Homebridge shows it.
+      const { text, truncated } = await client.getLogTail(MAX_BYTES, level ? { colour: true } : {});
+      const raw = splitLines(text);
+      if (truncated) {
+        raw.shift();
+      }
+      const entries = parseLogLines(raw);
+      const needle = pattern !== undefined && !cs ? pattern.toLowerCase() : pattern;
+      const candidates: number[] = [];
+      entries.forEach((e, i) => {
+        if (
+          (sinceMs === undefined || (e.time !== undefined && e.time >= sinceMs)) &&
+          (untilMs === undefined || (e.time !== undefined && e.time <= untilMs)) &&
+          (!level || atLeast(e.level, level)) &&
+          (!plugin || e.prefix?.toLowerCase().includes(plugin.toLowerCase())) &&
+          // Substring search is linear, so it is safe on the main thread.
+          (needle === undefined || regex || (cs ? e.text : e.text.toLowerCase()).includes(needle))
+        ) {
+          candidates.push(i);
+        }
+      });
 
-      let matches: string[];
-      if (regex) {
+      let matches = candidates;
+      if (pattern !== undefined && regex) {
         try {
-          matches = (await regexSearch(lines, pattern, flags, SEARCH_BUDGET_MS)).map((i) => lines[i]);
+          matches = (await regexSearch(candidates.map((i) => entries[i].text), pattern, flags, SEARCH_BUDGET_MS)).map((k) => candidates[k]);
         } catch (error) {
           if (error instanceof RegexTimeoutError) {
             return errorResult(
@@ -131,10 +176,6 @@ export const register: RegisterTools = (tool, client) => {
           }
           throw error;
         }
-      } else {
-        // Substring search is linear, so it is safe on the main thread.
-        const needle = cs ? pattern : pattern.toLowerCase();
-        matches = lines.filter((line) => (cs ? line : line.toLowerCase()).includes(needle));
       }
 
       const taken = matches.slice(-max);
@@ -144,8 +185,36 @@ export const register: RegisterTools = (tool, client) => {
         parts.push(note);
       }
       const header = parts.join(' ');
-      const body = taken.join('\n');
-      return textResult(body ? `${header}\n\n${body}` : header);
+      const body = context ? withContext(entries.map((e) => e.text), taken, context) : taken.map((i) => entries[i].text).join('\n');
+      const structured = {
+        total: matches.length,
+        shown: taken.length,
+        truncated,
+        matches: taken.map((i) => {
+          const e = entries[i];
+          return { line: i + 1, time: e.time === undefined ? null : new Date(e.time).toISOString(), level: e.level, plugin: e.prefix ?? null, text: e.text };
+        }),
+      };
+      return { ...textResult(body ? `${header}\n\n${body}` : header), structuredContent: structured };
     }),
   );
 };
+
+/** grep -C style: matched lines marked `>`, context lines indented, separate groups split by `--`. */
+export function withContext(lines: string[], matches: number[], context: number): string {
+  const hit = new Set(matches);
+  const out: string[] = [];
+  let shownUntil = -1;
+  for (const index of matches) {
+    const from = Math.max(index - context, shownUntil + 1);
+    const to = Math.min(index + context, lines.length - 1);
+    if (out.length && from > shownUntil + 1) {
+      out.push('--');
+    }
+    for (let i = from; i <= to; i++) {
+      out.push(`${hit.has(i) ? '>' : ' '} ${lines[i]}`);
+    }
+    shownUntil = Math.max(shownUntil, to);
+  }
+  return out.join('\n');
+}

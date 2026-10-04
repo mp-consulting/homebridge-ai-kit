@@ -2,6 +2,12 @@ import { z } from 'zod';
 import type { RegisterTools } from '../types.js';
 import { REDACTED, containsRedacted, redactSecrets, restoreSecrets } from '@mp-consulting/homebridge-ai-core';
 import { READ, errorResult, handle, jsonResult, textResult } from './helpers.js';
+import { previewConfigChange, writeConfig } from './config-backups.js';
+
+const dryRun = z
+  .boolean()
+  .optional()
+  .describe('Only return what would change (a redacted path list and unified diff) without writing anything.');
 
 /**
  * The minimum shape Homebridge needs. Extra keys pass through untouched; this
@@ -68,18 +74,24 @@ export const register: RegisterTools = (tool, client) => {
       description:
         'Update the Homebridge config.json file. You must provide the FULL config object — it replaces the entire file. ' +
         `Use get_config first to read the current config, then modify and pass back the complete object. "${REDACTED}" placeholders ` +
-        'are swapped back to the current real values before saving.',
+        'are swapped back to the current real values before saving. Pass dryRun=true first to review the diff. ' +
+        'The Homebridge UI backs up the previous file on every save; the result names that backup for restore_config.',
       inputSchema: {
         config: configSchema.describe('The complete config.json object to write'),
+        dryRun,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    handle('updating config', async ({ config }) => {
-      const toWrite = containsRedacted(config) ? restoreSecrets(config, await client.getConfig()) : config;
-      const result = await client.updateConfig(toWrite);
-      return result
-        ? jsonResult(result)
-        : textResult('Config updated successfully. A Homebridge restart may be required for changes to take effect.');
+    handle('updating config', async ({ config, dryRun }) => {
+      const current = dryRun || containsRedacted(config) ? await client.getConfig() : undefined;
+      const toWrite = (containsRedacted(config) ? restoreSecrets(config, current!) : config) as Record<string, unknown>;
+      if (dryRun) {
+        return jsonResult(previewConfigChange(current!, toWrite));
+      }
+      // The UI answers with the saved file, secrets included, so it is not echoed back.
+      return textResult(
+        await writeConfig(client, toWrite, 'Config updated successfully. A Homebridge restart may be required for changes to take effect.'),
+      );
     }),
   );
 
@@ -90,16 +102,18 @@ export const register: RegisterTools = (tool, client) => {
       description:
         'Change one platform or accessory block in config.json without sending the whole file. Identify the block by `platform` or `accessory` ' +
         '(plus `name` when several blocks share it). `patch` is deep-merged: objects merge, arrays and values replace, and null removes a key. ' +
-        `"${REDACTED}" placeholders in the patch keep the current secret. Returns the updated block (secrets redacted).`,
+        `"${REDACTED}" placeholders in the patch keep the current secret. Returns the updated block (secrets redacted) and the backup id ` +
+        'restore_config can roll back to. Pass dryRun=true to see the redacted diff without writing.',
       inputSchema: {
         platform: z.string().min(1).optional().describe("The block's `platform` value, e.g. 'Camera-ffmpeg'"),
         accessory: z.string().min(1).optional().describe("The block's `accessory` value, for accessory plugins"),
         name: z.string().min(1).optional().describe("The block's `name`, to pick one of several blocks of the same platform"),
         patch: z.looseObject({}).describe('Keys to change'),
+        dryRun,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    handle('patching config', async ({ platform, accessory, name, patch }) => {
+    handle('patching config', async ({ platform, accessory, name, patch, dryRun }) => {
       if (!platform === !accessory) {
         return errorResult('Pass exactly one of `platform` or `accessory`.');
       }
@@ -126,8 +140,12 @@ export const register: RegisterTools = (tool, client) => {
       updated[idKey] = id;
       const nextList = [...list];
       nextList[index] = updated;
-      await client.updateConfig({ ...config, [listKey]: nextList });
-      return jsonResult({ updated: redactSecrets(updated), note: 'Saved. A Homebridge (or child bridge) restart may be required.' });
+      const next = { ...config, [listKey]: nextList };
+      if (dryRun) {
+        return jsonResult(previewConfigChange(config, next));
+      }
+      const note = await writeConfig(client, next, 'Saved. A Homebridge (or child bridge) restart may be required.');
+      return jsonResult({ updated: redactSecrets(updated), note });
     }),
   );
 };

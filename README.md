@@ -39,7 +39,9 @@ Plugins should depend on **ai-core**, so installing them doesn't pull in the MCP
 
 **MCP resources** you can subscribe to: `homebridge://accessories`, `homebridge://logs/recent`, `homebridge://status`. Changes arrive over the Homebridge UI's socket.io namespaces, or by polling when the socket can't be used.
 
-**MCP prompts**: `diagnose-logs`, `plan-upgrade`, `audit-config`.
+**MCP resource templates** (listed in `resources/list`, with completion): `homebridge://accessory/{uniqueId}` (one accessory with every characteristic), `homebridge://plugin/{name}` (one installed plugin and its child bridges; URL-encode scoped names), `homebridge://child-bridge/{id}` (one child bridge by username, with its health on Glass UI).
+
+**MCP prompts**: `diagnose-logs`, `plan-upgrade`, `audit-config`, `troubleshoot-device` (`device`, `symptom?`), `nightly-health-check` (`hours?`), `scene-builder` (`description`, `room?`).
 
 **Assistant features** (library): `diagnoseLogs`, `generatePluginConfig`, `explainDeviceError`, `assessPluginUpdate`, `suggestOrganization`, `dailyDigest`, `ask`, and `runAgent` for anything that needs the tools. Every input is redacted before it reaches a provider and trimmed to fit its context window; JSON outputs are checked against a schema with one automatic repair attempt; token usage and Claude costs are tracked.
 
@@ -167,6 +169,7 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 | `HOMEBRIDGE_TOKEN` | A Homebridge UI API token (Glass UI `hbg_…`). Replaces username and password |
 | `HOMEBRIDGE_USERNAME` / `HOMEBRIDGE_PASSWORD` | UI login, when no token is set |
 | `HOMEBRIDGE_READ_ONLY` | `true` removes every tool that changes something |
+| `HOMEBRIDGE_ELICITATION` | `false` stops the server asking the user (MCP elicitation) to confirm destructive tools. Default on; clients without elicitation are unaffected |
 | `HOMEBRIDGE_TIMEOUT_MS` | Request timeout (default `30000`) |
 | `HOMEBRIDGE_CERT_FINGERPRINT` | SHA-256 fingerprint of an `https` Homebridge UI's self-signed certificate to trust (pinned). See [self-signed certificates](#homebridge-ui-over-https-with-a-self-signed-certificate) |
 | `HOMEBRIDGE_CERT_PATH` | PEM file with the `https` Homebridge UI's certificate or its CA to trust |
@@ -211,14 +214,20 @@ claude mcp add --transport http homebridge http://127.0.0.1:8582/mcp --header "A
 
 | Group | Tools |
 |---|---|
-| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `get_accessory_layout`, `get_accessory_history` |
+| Accessories | `list_accessories` (filter by `room`, `type`, `name`, `manufacturer`, `excludeManufacturer`), `get_accessory`, `set_accessory`, `set_accessories` (many targets by id or filter, with `dryRun`; never locks, doors or alarms), `get_accessory_layout`, `get_accessory_history` |
 | Server | `get_homebridge_status`, `get_server_status`, `restart_homebridge`, `get_pairing_info`, `get_cached_accessories`, `remove_cached_accessory`, `reset_cached_accessories` |
-| Child bridges | `list_child_bridges`, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge` |
-| Config | `get_config`, `update_config`, `patch_config` |
+| Child bridges | `list_child_bridges`, `get_child_bridge_health`\*, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge` |
+| Scenes\* | `list_scenes`, `run_scene` (by id or name), `save_scene` (from the current state of chosen accessories) |
+| Notifications\* | `send_test_notification` |
+| Config | `get_config`, `update_config` and `patch_config` (both with `dryRun` for a redacted diff; each write names the backup that undoes it), `list_config_backups`, `restore_config` |
+| Backups | `create_backup`, `list_backups` (full instance backups in the UI's backup directory) |
 | Plugins | `list_plugins`, `search_plugins`, `lookup_plugin`, `get_plugin_versions`, `get_plugin_config_schema`, `get_plugin_changelog`, `install_plugin`, `update_plugin`, `uninstall_plugin`, `get_plugin_job` |
 | System | `get_system_info` |
-| Logs | `get_recent_logs`, `search_logs` |
+| Logs | `get_recent_logs`, `search_logs` (filter by `since`/`until`, minimum `level`, `plugin` prefix; `context` lines around matches) |
 
+\* Needs [Homebridge Glass UI](https://github.com/mp-consulting/homebridge-config-glass-ui); with another Homebridge UI these tools answer with an error saying so.
+
+- The list/get tools (`list_accessories`, `get_accessory`, `list_plugins`, `list_child_bridges`, `get_child_bridge_health`, `get_homebridge_status`, `get_server_status`, `search_logs`, `list_scenes`) also return `structuredContent` matching their `outputSchema`.
 - `set_accessory` checks the value against the characteristic first (format, min/max, step, valid values, write permission), coerces `"50"` to `50` or `1` to `true`, and explains what is wrong instead of sending a bad value.
 - `get_accessory_history` returns an accessory's recorded sensor values (temperature, humidity, light level, battery, air quality, power, energy) over the last `hours` (default 24, up to 8760), optionally for one characteristic `type`. Per series it gives `count`, `min` / `max` (value and when), the time-weighted `avg`, `last`, and the `points` averaged down to `maxPoints` (default 48, 2–500), with times in UTC to the minute. It needs Homebridge Glass UI (`GET /api/accessories/:uniqueId/history`), which records these values while Homebridge runs in insecure mode.
 - `patch_config` changes one platform or accessory block (found by `platform`/`accessory` plus `name`); objects merge, `null` removes a key, and `__REDACTED__` keeps the current secret.
@@ -270,7 +279,7 @@ Everything in this table except `runAgent` comes from `@mp-consulting/homebridge
 ## Security
 
 - **Secrets stay out of the model's context.** `get_config`, `patch_config` and the Assistant features replace passwords, tokens, API keys (including the AI Kit `apiKey` and MCP tokens) and the bridge pin with `__REDACTED__`. Writes swap the placeholders back for the real values. Free text sent to a provider (logs, errors) has credential-shaped values masked too.
-- **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
+- **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. When the MCP client supports elicitation, the server itself asks the user to confirm each destructive tool call (arguments shown with secrets redacted; dry runs skip it; a declined or failed confirmation does not run the tool); `HOMEBRIDGE_ELICITATION=false` turns that off. Config writes can be previewed with `dryRun` and rolled back with `restore_config`; bulk control and scenes never touch locks, garage doors or alarms without an explicit step. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
 - **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default.
 - **`update_config` rejects incomplete configs**, and regex log searches run in a worker thread that is killed after 5 seconds.
 - The server warns if `HOMEBRIDGE_URL` sends credentials over plain `http` to a non-local host.

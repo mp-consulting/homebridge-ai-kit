@@ -29,7 +29,9 @@ describe('resources', () => {
   it('lists and reads the three resources', async () => {
     const { mcp } = await connect(client(), { live: false });
     const { resources } = await mcp.listResources();
-    expect(resources.map((r) => r.uri).sort()).toEqual(Object.values(RESOURCE_URIS).sort());
+    expect(resources.map((r) => r.uri).sort()).toEqual(
+      [...Object.values(RESOURCE_URIS), 'homebridge://accessory/a', 'homebridge://accessory/b'].sort(),
+    );
 
     const acc = await mcp.readResource({ uri: RESOURCE_URIS.accessories });
     expect(JSON.parse((acc.contents[0] as { text: string }).text)).toEqual([
@@ -86,7 +88,14 @@ describe('prompts', () => {
   it('lists and renders the MCP prompts', async () => {
     const { mcp } = await connect(mockClient(), { live: false });
     const { prompts } = await mcp.listPrompts();
-    expect(prompts.map((p) => p.name)).toEqual(['diagnose-logs', 'plan-upgrade', 'audit-config']);
+    expect(prompts.map((p) => p.name)).toEqual([
+      'diagnose-logs',
+      'plan-upgrade',
+      'audit-config',
+      'troubleshoot-device',
+      'nightly-health-check',
+      'scene-builder',
+    ]);
 
     const diag = await mcp.getPrompt({ name: 'diagnose-logs', arguments: { focus: 'Ring' } });
     expect(diag.messages[0]).toMatchObject({ role: 'user', content: { type: 'text' } });
@@ -95,5 +104,24 @@ describe('prompts', () => {
     expect((plan.messages[0].content as { text: string }).text).toContain('list_plugins');
     const audit = await mcp.getPrompt({ name: 'audit-config' });
     expect((audit.messages[0].content as { text: string }).text).toContain('get_config');
+  });
+
+  it('renders the workflow prompts with their arguments', async () => {
+    const { mcp } = await connect(mockClient(), { live: false });
+    const text = async (name: string, args?: Record<string, string>) =>
+      ((await mcp.getPrompt({ name, arguments: args })).messages[0].content as { text: string }).text;
+
+    const trouble = await text('troubleshoot-device', { device: 'Porch Light', symptom: 'No Response' });
+    expect(trouble).toContain('"Porch Light" (symptom: No Response)');
+    expect(trouble).toContain('get_child_bridge_health');
+    expect(await text('troubleshoot-device', { device: 'Fan' })).not.toContain('symptom');
+
+    expect(await text('nightly-health-check')).toContain('since "24h"');
+    expect(await text('nightly-health-check', { hours: '12' })).toContain('since "12h"');
+
+    const scene = await text('scene-builder', { description: 'movie night', room: 'Living' });
+    expect(scene).toContain('"movie night" in the room "Living"');
+    expect(scene).toContain('save_scene');
+    expect(await text('scene-builder', { description: 'wake up' })).not.toContain('room "');
   });
 });

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { Accessory, CharacteristicInfo, RegisterTools } from '../types.js';
-import { READ, errorResult, handle, jsonResult } from './helpers.js';
+import { READ, asObject, errorResult, handle, jsonResult, structuredResult } from './helpers.js';
+import { ACCESSORY, ACCESSORY_LIST } from './output-schemas.js';
+import { accessoryFilterShape, selectAccessories } from '../accessory-select.js';
 
 function compactAccessory(acc: Accessory) {
   return {
@@ -80,53 +82,18 @@ export const register: RegisterTools = (tool, client) => {
     {
       title: 'List accessories',
       description: 'List all Homebridge accessories with their current state (on/off, brightness, temperature, etc.)',
-      inputSchema: {
-        room: z.string().optional().describe('Filter by room name (case-insensitive)'),
-        type: z.string().optional().describe("Filter by accessory type (e.g. 'Lightbulb', 'Switch', 'Thermostat')"),
-        manufacturer: z.string().optional().describe('Filter by manufacturer (case-insensitive, contains match)'),
-        excludeManufacturer: z.string().optional().describe('Exclude accessories from this manufacturer (case-insensitive, contains match)'),
-        name: z.string().optional().describe('Filter by service name (case-insensitive, contains match)'),
-      },
+      inputSchema: accessoryFilterShape,
+      outputSchema: ACCESSORY_LIST,
       annotations: READ,
     },
-    handle('listing accessories', async ({ room, type, manufacturer, excludeManufacturer, name }) => {
-      const [all, layout] = await Promise.all([
-        client.getAccessories(),
-        room ? client.getAccessoryLayout() : undefined,
-      ]);
-      let accessories = all;
-
-      // Room filter: resolve UIDs from layout
-      if (room && layout) {
-        const matchedRoom = layout.find((r) => r.name.toLowerCase() === room.toLowerCase());
-        if (!matchedRoom) {
-          return errorResult(`Room not found: "${room}". Available rooms: ${layout.map((r) => r.name).join(', ')}`);
-        }
-        const roomUids = new Set(matchedRoom.services.map((s) => s.uniqueId));
-        accessories = accessories.filter((a) => roomUids.has(a.uniqueId));
+    handle('listing accessories', async (filter) => {
+      const selected = await selectAccessories(client, filter);
+      if ('error' in selected) {
+        return errorResult(selected.error);
       }
-
-      if (type) {
-        const t = type.toLowerCase();
-        accessories = accessories.filter((a) => a.type?.toLowerCase() === t);
-      }
-
-      if (manufacturer) {
-        const mfr = manufacturer.toLowerCase();
-        accessories = accessories.filter((a) => a.accessoryInformation?.Manufacturer?.toLowerCase().includes(mfr));
-      }
-
-      if (excludeManufacturer) {
-        const excl = excludeManufacturer.toLowerCase();
-        accessories = accessories.filter((a) => !a.accessoryInformation?.Manufacturer?.toLowerCase().includes(excl));
-      }
-
-      if (name) {
-        const n = name.toLowerCase();
-        accessories = accessories.filter((a) => a.serviceName?.toLowerCase().includes(n));
-      }
-
-      return jsonResult(accessories.map(compactAccessory));
+      const { accessories } = selected;
+      const list = accessories.map(compactAccessory);
+      return structuredResult({ accessories: list }, list);
     }),
   );
 
@@ -136,9 +103,13 @@ export const register: RegisterTools = (tool, client) => {
       title: 'Get accessory',
       description: 'Get detailed information about a specific accessory by its uniqueId. Use list_accessories first to find the uniqueId.',
       inputSchema: { uniqueId: z.string().min(1).describe('The unique identifier of the accessory') },
+      outputSchema: ACCESSORY,
       annotations: READ,
     },
-    handle('getting accessory', async ({ uniqueId }) => jsonResult(await client.getAccessory(uniqueId))),
+    handle('getting accessory', async ({ uniqueId }) => {
+      const accessory = await client.getAccessory(uniqueId);
+      return structuredResult(asObject(accessory), accessory);
+    }),
   );
 
   tool(
