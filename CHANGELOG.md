@@ -7,12 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.0] - Unreleased
 
+### Added
+
+- **The Assistant (AI core, `.` export).** Provider adapters over plain `fetch` for Claude (`anthropic`, default `claude-sonnet-5-5`), OpenAI, Gemini and any OpenAI-compatible server (Ollama, LM Studio), each declaring its capabilities (tools, streaming, context size). Uniform `chat()` / `stream()` API with tool calling.
+- **Agent loop** `runAgent()`: connects a provider to the MCP tools through the MCP SDK's in-memory transport. Destructive tools are refused unless a `confirm` callback allows them; providers without tool calling get a prompt-only answer.
+- **Features:** `diagnoseLogs`, `generatePluginConfig` (schema-checked, secrets restored), `explainDeviceError`, `assessPluginUpdate` (low/medium/high risk), `suggestOrganization`, `dailyDigest`, `ask`. Inputs are redacted and trimmed to the provider's context window; all stream through `onChunk`.
+- **Utilities:** `generateJson` (ajv validation with one repair retry), `trimToContext` / `estimateTokens`, `UsageTracker` with Claude prices, `PROMPTS` templates, `redactText` for free text, `readAiConfig` / `resolveAiConfig`.
+- **Homebridge plugin.** The package is now also a Homebridge platform plugin (`HomebridgeAiKit`) with `config.schema.json` and a custom settings page (built with `@mp-consulting/homebridge-ui-kit`) to choose the provider and model, test the connection, serve MCP over HTTP and copy configs for Claude Desktop, Claude Code and Cursor.
+- **`./plugin` export:** `registerAiRoutes(server)` adds `/ai/status`, `/ai/explain`, `/ai/ask` and `/ai/config` to any plugin's custom UI server, streaming `ai:chunk` / `ai:done` / `ai:error` events; plus `testAiConnection` and `mcpClientSnippets`.
+- **MCP over Streamable HTTP:** `homebridge-ai-kit mcp --http [--port 8582] [--host 127.0.0.1]` and `runHttpServer()`. Requires a bearer token (`HOMEBRIDGE_AI_MCP_TOKEN`) and binds to 127.0.0.1 by default.
+- **API-token login:** `HOMEBRIDGE_TOKEN` (a Glass UI `hbg_…` token) replaces username and password. `new HomebridgeClient({ url, token, getToken, … })` takes options, and `getToken` lets Glass UI act with each user's short-lived token.
+- **New MCP tools:** `install_plugin`, `update_plugin`, `uninstall_plugin` and `get_plugin_job` (Glass UI plugin jobs, polled until done), `list_child_bridges`, `restart_child_bridge`, `stop_child_bridge`, `start_child_bridge`, and `patch_config` for editing one platform or accessory block.
+- **MCP resources with subscriptions:** `homebridge://accessories`, `homebridge://logs/recent` and `homebridge://status`, updated live from the UI's socket.io namespaces with a polling fallback.
+- **MCP prompts:** `diagnose-logs`, `plan-upgrade` and `audit-config`, sharing their text with the Assistant's templates.
+
 ### Changed
 
 - **Renamed to `@mp-consulting/homebridge-ai-kit`** (was `@mp-consulting/homebridge-mcp-server`). The package becomes the home for all AI features shared by Homebridge Glass UI and the MP Consulting plugins; the MCP server is its first part.
 - **New command: `homebridge-ai-kit mcp`.** The `homebridge-mcp-server` command is kept as an alias, and the environment variables are unchanged, so existing MCP client configs keep working.
 - **The MCP server reports its name as `homebridge-ai-kit`** instead of `homebridge-mcp-server`. Clients that match on the server name need updating.
 - **Breaking for library users:** the package entry point no longer starts the server. Import `createServer` and `HomebridgeClient` from `@mp-consulting/homebridge-ai-kit/mcp`; secret redaction (`redactSecrets`, `restoreSecrets`) is exported from the main entry.
+- **`set_accessory` checks the value before sending it** against the characteristic's format, range, step, valid values and write permission, and coerces e.g. `"50"` to `50`.
+- Redaction no longer hides token *counts* such as `maxOutputTokens` or `contextTokens`.
+- **Before release:** `@mp-consulting/homebridge-ui-kit` is referenced as `file:../homebridge-ui-kit` (dev dependency, assets copied at build) until ui-kit 1.2.0 is published; change it to `^1.2.0` before releasing.
 
 ## [1.2.2] - 2026-10-03
 
