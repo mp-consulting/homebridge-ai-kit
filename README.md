@@ -167,6 +167,7 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 | `HOMEBRIDGE_TOKEN` | A Homebridge UI API token (Glass UI `hbg_…`). Replaces username and password |
 | `HOMEBRIDGE_USERNAME` / `HOMEBRIDGE_PASSWORD` | UI login, when no token is set |
 | `HOMEBRIDGE_READ_ONLY` | `true` removes every tool that changes something |
+| `HOMEBRIDGE_ELICITATION` | `false` stops the server asking the user (MCP elicitation) to confirm destructive tools. Default on; clients without elicitation are unaffected |
 | `HOMEBRIDGE_TIMEOUT_MS` | Request timeout (default `30000`) |
 | `HOMEBRIDGE_CERT_FINGERPRINT` | SHA-256 fingerprint of an `https` Homebridge UI's self-signed certificate to trust (pinned). See [self-signed certificates](#homebridge-ui-over-https-with-a-self-signed-certificate) |
 | `HOMEBRIDGE_CERT_PATH` | PEM file with the `https` Homebridge UI's certificate or its CA to trust |
@@ -275,7 +276,7 @@ Everything in this table except `runAgent` comes from `@mp-consulting/homebridge
 ## Security
 
 - **Secrets stay out of the model's context.** `get_config`, `patch_config` and the Assistant features replace passwords, tokens, API keys (including the AI Kit `apiKey` and MCP tokens) and the bridge pin with `__REDACTED__`. Writes swap the placeholders back for the real values. Free text sent to a provider (logs, errors) has credential-shaped values masked too.
-- **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
+- **Destructive actions need consent.** Every tool declares MCP `readOnlyHint` / `destructiveHint`; `runAgent` refuses destructive tools unless a `confirm` callback allows them. When the MCP client supports elicitation, the server itself asks the user to confirm each destructive tool call (arguments shown with secrets redacted; dry runs skip it; a declined or failed confirmation does not run the tool); `HOMEBRIDGE_ELICITATION=false` turns that off. Config writes can be previewed with `dryRun` and rolled back with `restore_config`; bulk control and scenes never touch locks, garage doors or alarms without an explicit step. `HOMEBRIDGE_READ_ONLY=true` removes write tools entirely.
 - **HTTP is locked down.** The HTTP transport requires a bearer token, compares it in constant time and binds to `127.0.0.1` by default.
 - **`update_config` rejects incomplete configs**, and regex log searches run in a worker thread that is killed after 5 seconds.
 - The server warns if `HOMEBRIDGE_URL` sends credentials over plain `http` to a non-local host.

@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { HomebridgeClient } from './homebridge-client.js';
 import type { RegisterTools } from './types.js';
 import { createRegistrar } from './tools/helpers.js';
+import { withElicitation } from './elicitation.js';
 import { register as registerAccessories } from './tools/accessories.js';
 import { register as registerHistory } from './tools/history.js';
 import { register as registerBulk } from './tools/bulk.js';
@@ -51,11 +52,18 @@ export interface ServerOptions {
    * fallback ({@link createLiveSource}); `false` disables subscriptions.
    */
   live?: LiveSource | false;
+  /**
+   * Ask the user to confirm destructive tools through MCP elicitation when the client supports it.
+   * Default: on, unless `HOMEBRIDGE_ELICITATION` is 0/false/no/off.
+   */
+  elicitation?: boolean;
 }
 
 export function createServer(client: HomebridgeClient, options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: 'homebridge-ai-kit', version: VERSION });
-  const tool = createRegistrar(server, options);
+  const elicitation = options.elicitation ?? !/^(0|false|no|off)$/i.test(process.env.HOMEBRIDGE_ELICITATION?.trim() ?? '');
+  const registrar = createRegistrar(server, options);
+  const tool = elicitation ? withElicitation(registrar, server) : registrar;
   for (const register of TOOL_GROUPS) {
     register(tool, client);
   }
