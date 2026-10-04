@@ -1,3 +1,4 @@
+import { tailLines } from '@mp-consulting/homebridge-ai-core';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError, SubscribeRequestSchema, UnsubscribeRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { HomebridgeClient } from './homebridge-client.js';
@@ -17,9 +18,6 @@ const TOPIC_BY_URI: Record<string, LiveTopic> = {
 
 /** Lines of log returned by `homebridge://logs/recent`. */
 export const RECENT_LOG_LINES = 200;
-
-// eslint-disable-next-line no-control-regex
-const ANSI = /\u001B\[[0-9;]*m/g;
 
 function json(uri: string, data: unknown) {
   return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data) }] };
@@ -47,8 +45,8 @@ export function registerResources(server: McpServer, client: HomebridgeClient, l
     { title: 'Recent log', description: `The last ${RECENT_LOG_LINES} Homebridge log lines. Subscribe to follow the log.`, mimeType: 'text/plain' },
     async (uri) => {
       const { text } = await client.getLogTail(64 * 1024);
-      const lines = text.replace(ANSI, '').split('\n');
-      return { contents: [{ uri: uri.href, mimeType: 'text/plain', text: lines.slice(-RECENT_LOG_LINES).join('\n') }] };
+      const lines = tailLines(text, RECENT_LOG_LINES, { keepBlank: true });
+      return { contents: [{ uri: uri.href, mimeType: 'text/plain', text: lines.join('\n') }] };
     },
   );
 

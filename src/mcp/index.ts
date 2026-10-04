@@ -8,6 +8,6 @@ export type { HttpServerOptions, RunningHttpServer } from './http.js';
 export { LIVE_TOPICS, createLiveSource } from './live.js';
 export type { LiveOptions, LiveSource, LiveTopic, LiveWatch } from './live.js';
 export { RESOURCE_URIS } from './resources.js';
-export { createTrustedFetch } from './tls.js';
+export { createTrustedFetch, normalizeFingerprint, pemFingerprints } from './tls.js';
 export type { TrustOptions } from './tls.js';
 export type { Accessory, AccessoryHistory, CharacteristicInfo, ChildBridge, PluginJob, Room } from './types.js';
