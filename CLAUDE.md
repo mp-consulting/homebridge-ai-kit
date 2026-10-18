@@ -160,3 +160,4 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 - **Follow [Semantic Versioning](https://semver.org/)** — bump MAJOR for breaking changes, MINOR for new features, PATCH for bug fixes.
 - **Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)** format in `CHANGELOG.md` — use Added, Changed, Deprecated, Removed, Fixed, Security sections.
 - **Write clear commit messages** — concise subject line describing the "why", not just the "what".
+- **No AI attribution in commits or PRs** — never add `Co-Authored-By: Claude …` trailers or "Generated with Claude Code" lines to commit messages or pull request descriptions.
