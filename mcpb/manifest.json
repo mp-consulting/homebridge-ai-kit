@@ -1,0 +1,90 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/dist/mcpb-manifest-v0.3.schema.json",
+  "manifest_version": "0.3",
+  "name": "homebridge-ai-kit",
+  "display_name": "Homebridge",
+  "version": "__VERSION__",
+  "description": "Control your Homebridge accessories and scenes, manage plugins and config, and read logs from Claude.",
+  "long_description": "Homebridge AI Kit is an MCP server for the Homebridge UI. It lists and controls accessories (locks, garage doors and alarms only after you confirm), runs and saves scenes, restarts the server and child bridges, edits config.json with diffs and backups, installs and updates plugins, and searches the logs.\n\n**Setup:** enter your Homebridge UI address (for example `http://192.168.1.100:8581`) and either an API token (Homebridge Glass UI, `hbg_…`) or the UI username and password. Turn on **Read-only** to remove every tool that changes something.\n\nSecrets in config.json are redacted in everything the server returns. For a self-signed `https` UI, paste its certificate's SHA-256 fingerprint.",
+  "author": {
+    "name": "MP Consulting",
+    "url": "https://github.com/mp-consulting"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mp-consulting/homebridge-ai-kit"
+  },
+  "homepage": "https://github.com/mp-consulting/homebridge-ai-kit",
+  "documentation": "https://github.com/mp-consulting/homebridge-ai-kit#readme",
+  "support": "https://github.com/mp-consulting/homebridge-ai-kit/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "server/node_modules/@mp-consulting/homebridge-ai-kit/dist/bin/homebridge-ai-kit.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/node_modules/@mp-consulting/homebridge-ai-kit/dist/bin/homebridge-ai-kit.js", "mcp"],
+      "env": {
+        "HOMEBRIDGE_URL": "${user_config.homebridge_url}",
+        "HOMEBRIDGE_TOKEN": "${user_config.homebridge_token}",
+        "HOMEBRIDGE_USERNAME": "${user_config.homebridge_username}",
+        "HOMEBRIDGE_PASSWORD": "${user_config.homebridge_password}",
+        "HOMEBRIDGE_READ_ONLY": "${user_config.read_only}",
+        "HOMEBRIDGE_CERT_FINGERPRINT": "${user_config.cert_fingerprint}"
+      }
+    }
+  },
+  "tools": __TOOLS__,
+  "keywords": ["homebridge", "homekit", "smart home", "home automation", "accessories", "plugins"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=22.10.0"
+    }
+  },
+  "user_config": {
+    "homebridge_url": {
+      "type": "string",
+      "title": "Homebridge UI URL",
+      "description": "Address of your Homebridge UI, e.g. http://192.168.1.100:8581",
+      "required": true
+    },
+    "homebridge_token": {
+      "type": "string",
+      "title": "API token",
+      "description": "A Homebridge UI API token (Glass UI, hbg_…). Replaces the username and password.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    },
+    "homebridge_username": {
+      "type": "string",
+      "title": "Username",
+      "description": "Homebridge UI login, when no API token is set.",
+      "required": false,
+      "default": ""
+    },
+    "homebridge_password": {
+      "type": "string",
+      "title": "Password",
+      "description": "Homebridge UI password, when no API token is set.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    },
+    "read_only": {
+      "type": "boolean",
+      "title": "Read-only",
+      "description": "Only reading tools: no device control, config changes, plugin installs or restarts.",
+      "default": false,
+      "required": false
+    },
+    "cert_fingerprint": {
+      "type": "string",
+      "title": "Certificate fingerprint",
+      "description": "SHA-256 fingerprint of a self-signed https Homebridge UI certificate to trust. Leave empty otherwise.",
+      "required": false,
+      "default": ""
+    }
+  }
+}

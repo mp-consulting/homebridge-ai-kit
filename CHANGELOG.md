@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Claude app extension**: each release attaches `homebridge-ai-kit-<version>.mcpb`, which installs the MCP server in the Claude app with a double-click and asks for the Homebridge UI URL, an API token or username / password, Read-only and a certificate fingerprint (the secrets go to the OS keychain). It bundles the server and its dependencies and runs on Claude's own Node. It is signed for Claude when the repository has a Developer ID certificate. Build one locally with `scripts/make-mcpb.sh`.
+- **Homebrew**: `brew install mp-consulting/tap/homebridge-ai-kit`; the formula follows each npm release.
+- **MCP registry**: each release is listed as `io.github.mp-consulting/homebridge-ai-kit`, with the npm package and the `.mcpb` (`server.json`, `mcpName` in `package.json`).
+
 ## [3.0.0] - 2026-10-05
 
 ### Breaking

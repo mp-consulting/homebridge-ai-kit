@@ -183,6 +183,16 @@ With a `requestId`, the server streams `ai:chunk` `{ requestId, delta }` events,
 
 ## MCP server
 
+### Install
+
+| How | For |
+|---|---|
+| `homebridge-ai-kit-x.y.z.mcpb` from the [latest release](https://github.com/mp-consulting/homebridge-ai-kit/releases/latest) | **The Claude app**: double-click to install it as an extension, then fill in the Homebridge UI URL and a token (or username and password). No Node or config file needed. |
+| `brew install mp-consulting/tap/homebridge-ai-kit` | A `homebridge-ai-kit` command on macOS / Linux, kept up to date by Homebrew |
+| `npx -y @mp-consulting/homebridge-ai-kit mcp` | Any MCP client, no install (see the configs below) |
+
+The server is also listed in the [MCP registry](https://registry.modelcontextprotocol.io) as `io.github.mp-consulting/homebridge-ai-kit`.
+
 ### Environment
 
 | Variable | Description |
@@ -349,6 +359,8 @@ npm run typecheck      # Type-check src and test (both packages)
 ```
 
 **Publishing.** The release workflow publishes `@mp-consulting/homebridge-ai-core` first (skipped if that version is already on npm), then `@mp-consulting/homebridge-ai-kit`, which depends on it. Both use npm trusted publishing (OIDC): before the first release, configure a trusted publisher on npmjs.com for the new `@mp-consulting/homebridge-ai-core` package name too (repository `mp-consulting/homebridge-ai-kit`, workflow `publish.yml`); if npm only lets you add one to an existing package, publish ai-core 2.0.0 once by hand from `packages/ai-core`. The first ai-core release has to go out before ai-kit 2.0.0 can be installed from npm.
+
+After npm, the same workflow builds the Claude extension with `scripts/make-mcpb.sh` (the manifest template is `mcpb/manifest.json`; its tool list comes from `scripts/mcpb-tools.mjs`), signs it with `mcpb sign` when the `DEVELOPER_ID_CERTIFICATE` and `DEVELOPER_ID_CERTIFICATE_PASSWORD` secrets are set, attaches it to the release, and publishes `server.json` to the MCP registry (GitHub OIDC). The Homebrew formula in [mp-consulting/homebrew-tap](https://github.com/mp-consulting/homebrew-tap) picks up each npm version on its own (every 6 hours).
 
 ## License
 

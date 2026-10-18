@@ -93,6 +93,9 @@ src/                             # ai-kit; imports ai-core as `@mp-consulting/ho
         ├── plugin-jobs.ts       # install / update / uninstall (Glass UI jobs, polled), get_plugin_job
         ├── system.ts            # system info (CPU, memory, OS)
         └── logs.ts              # recent logs, search logs (since/until, level, plugin, context)
+mcpb/manifest.json               # Claude extension manifest template (__VERSION__, __TOOLS__), packed by scripts/make-mcpb.sh
+scripts/                         # make-mcpb.sh (builds dist-mcpb/*.mcpb), mcpb-tools.mjs (tool list for the manifest)
+server.json                      # MCP registry entry (npm + mcpb), filled in and published by publish.yml
 config.schema.json               # Homebridge plugin schema (pluginAlias HomebridgeAiKit, customUi)
 homebridge-ui/
 ├── server.js                    # custom UI server: registerAiRoutes + /ai/test, /mcp/token, /mcp/snippets
@@ -111,6 +114,8 @@ Tests mirror the source structure under `test/` (ai-kit) and `packages/ai-core/t
 - `npm run test:coverage` — tests with coverage thresholds (CI runs this)
 - `npm run lint` — ESLint, zero warnings allowed
 - `npm run typecheck` — type-check `src` and `test` (plain `tsc` only covers `src`)
+- `scripts/make-mcpb.sh` — build the Claude app extension (`dist-mcpb/homebridge-ai-kit-<version>.mcpb`)
+- Releases: publishing a GitHub release runs `publish.yml` — npm (ai-core, then ai-kit), then the `.mcpb` (signed if `DEVELOPER_ID_CERTIFICATE` is set) attached to the release and `server.json` published to the MCP registry. The Homebrew formula in `mp-consulting/homebrew-tap` follows npm by itself. A new user-facing env var also belongs in `mcpb/manifest.json` (`user_config`) and `server.json` when users should set it.
 
 ## Architecture Patterns
 

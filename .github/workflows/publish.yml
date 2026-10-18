@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Publish
 
 on:
   release:
@@ -63,3 +63,76 @@ jobs:
           else
             npm publish --provenance --access public
           fi
+
+  # After npm: builds the Claude app extension (homebridge-ai-kit-<version>.mcpb), attaches it to
+  # the release, and lists the version in the MCP registry (whose npm entry needs the package on npm).
+  extension:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write  # MCP registry login (GitHub OIDC)
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      # The extension is signed for Claude only when a Developer ID certificate is set.
+      SIGN: ${{ secrets.DEVELOPER_ID_CERTIFICATE != '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Make Claude extension
+        run: |
+          MCPB="$RUNNER_TEMP/homebridge-ai-kit-${TAG#v}.mcpb"
+          scripts/make-mcpb.sh "$MCPB"
+          echo "MCPB=$MCPB" >> "$GITHUB_ENV"
+
+      # Signs the bundle with the Developer ID certificate and Apple's intermediates, so Claude
+      # shows a verified publisher.
+      - name: Sign Claude extension
+        if: env.SIGN == 'true'
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          WORK="$RUNNER_TEMP/mcpb-sign"
+          mkdir -p "$WORK"
+          trap 'rm -rf "$WORK"' EXIT
+          (umask 077 && echo "$CERTIFICATE" | base64 --decode > "$WORK/id.p12")
+          pem() {
+            openssl pkcs12 -in "$WORK/id.p12" -passin env:CERTIFICATE_PASSWORD "$@" 2>/dev/null \
+              || openssl pkcs12 -legacy -in "$WORK/id.p12" -passin env:CERTIFICATE_PASSWORD "$@"
+          }
+          (umask 077 && pem -nocerts -nodes -out "$WORK/key.pem")
+          pem -clcerts -nokeys -out "$WORK/cert.pem"
+          for ca in DeveloperIDG2CA DeveloperIDCA; do
+            curl -fsSL "https://www.apple.com/certificateauthority/$ca.cer" -o "$WORK/$ca.cer"
+            openssl x509 -inform DER -in "$WORK/$ca.cer" -out "$WORK/$ca.pem"
+          done
+          npx --yes @anthropic-ai/mcpb@2.1.2 sign "$MCPB" --cert "$WORK/cert.pem" --key "$WORK/key.pem" \
+            --intermediate "$WORK/DeveloperIDG2CA.pem" "$WORK/DeveloperIDCA.pem"
+          npx --yes @anthropic-ai/mcpb@2.1.2 verify "$MCPB"
+
+      - name: Attach Claude extension
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$MCPB" --clobber
+
+      - name: Publish to the MCP registry
+        run: |
+          VERSION="${TAG#v}"
+          SHA256="$(sha256sum "$MCPB" | cut -d' ' -f1)"
+          sed -e "s/__VERSION__/$VERSION/g" -e "s/__SHA256__/$SHA256/" server.json > "$RUNNER_TEMP/server.json"
+          cd "$RUNNER_TEMP"
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
