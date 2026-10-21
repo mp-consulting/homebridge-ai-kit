@@ -1,2 +1,12 @@
-.snippet { white-space: pre; font-size: .8rem; max-height: 18rem; overflow: auto; }
+/* The Copy button sits beside the snippet (not over it), so scrolled text never runs under it. */
+.snippet { flex: 1 1 auto; min-width: 0; white-space: pre; font-size: .8rem; max-height: 18rem; overflow: auto; }
 .form-text code { font-size: .8em; }
+
+/* Fade the HTTP settings in when the switch reveals them (d-none → display: block). */
+#http-settings { transition: opacity 150ms ease-out; }
+@starting-style {
+  #http-settings { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #http-settings { transition: none; }
+}
