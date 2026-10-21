@@ -115,12 +115,15 @@
       homebridge.updatePluginConfig([block]).catch((e) => {
         homebridge.toast.error(e.message || String(e), 'Could not update the config');
       });
+      renderSnippet();
     }, 250);
     refreshVisibility();
-    renderSnippet();
   }
 
+  /** Only the latest request may write the snippet: earlier ones can resolve after it. */
+  let snippetSeq = 0;
   function renderSnippet() {
+    const seq = ++snippetSeq;
     const http = block.mcp && block.mcp.http;
     const body = {
       homebridgeUrl: window.location.origin,
@@ -130,18 +133,33 @@
       body.http = { host: http.host || '127.0.0.1', port: http.port || 8582, token: http.token };
     }
     homebridge.request('/mcp/snippets', body).then((snippets) => {
-      $('snippet').textContent = snippets[snippetTab];
+      if (seq === snippetSeq) {
+        $('snippet').textContent = snippets[snippetTab];
+      }
+    }).catch((e) => {
+      if (seq === snippetSeq) {
+        homebridge.toast.error(e.message || String(e), 'Could not build the snippet');
+      }
+    });
+  }
+
+  /** Marks a button busy (and disabled) until the promise settles. */
+  function busy(btn, promise) {
+    btn.setAttribute('aria-busy', 'true');
+    btn.disabled = true;
+    return promise.finally(() => {
+      btn.removeAttribute('aria-busy');
+      btn.disabled = false;
     });
   }
 
   function testConnection() {
     const result = $('test-result');
-    $('status').textContent = '';
     const answer = ai ? ai.renderAnswer(result, { title: 'Connection test', note: '' }) : null;
     if (!answer) {
       result.textContent = 'Testing…'; 
     }
-    homebridge.request('/ai/test', readForm()).then((res) => {
+    busy($('test-connection'), homebridge.request('/ai/test', readForm()).then((res) => {
       if (res.ok) {
         const text = 'Connected to **' + res.provider + '** using `' + res.model + '` in ' + res.latencyMs + ' ms. Reply: ' + (res.reply || '(empty)');
         if (answer) {
@@ -160,6 +178,80 @@
       } else {
         result.textContent = e.message || String(e); 
       }
+    }));
+  }
+
+  /** Shows or hides the password input a [data-reveal] button points at. */
+  function toggleReveal(btn) {
+    const input = $(btn.dataset.reveal);
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+    btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+  }
+
+  function copySnippet() {
+    const btn = $('copy-snippet');
+    const pre = $('snippet');
+    const text = pre.textContent;
+    let copying;
+    if (window.MpKit && typeof window.MpKit.copy === 'function') {
+      copying = window.MpKit.copy(text); // clipboard API, with an execCommand fallback
+    } else if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      copying = navigator.clipboard.writeText(text).then(() => true, () => false);
+    } else {
+      copying = Promise.resolve(false);
+    }
+    copying.then((ok) => {
+      if (!ok) {
+        // Leave the text selected so it can be copied by hand.
+        window.getSelection().selectAllChildren(pre);
+        homebridge.toast.error('Select the text and copy it yourself.', 'Could not copy');
+        return;
+      }
+      btn.querySelector('i').className = 'bi bi-check2';
+      btn.querySelector('span').textContent = 'Copied';
+      clearTimeout(btn.copiedTimer);
+      btn.copiedTimer = setTimeout(() => {
+        btn.querySelector('i').className = 'bi bi-clipboard';
+        btn.querySelector('span').textContent = 'Copy';
+      }, 1500);
+    });
+  }
+
+  function selectSnippetTab(tab) {
+    snippetTab = tab.dataset.snippet;
+    $('snippet-panel').setAttribute('aria-labelledby', tab.id);
+    renderSnippet();
+  }
+
+  /** Fallback when the installed ui-kit has no MpKit.Tabs: roles, aria-selected, arrow keys. */
+  function initSnippetTabsManually() {
+    const tabs = Array.from(document.querySelectorAll('[data-snippet]'));
+    function select(tab) {
+      tabs.forEach((t) => {
+        const on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      selectSnippetTab(tab);
+    }
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => select(tab));
+      tab.addEventListener('keydown', (ev) => {
+        const to = {
+          ArrowRight: tabs[(i + 1) % tabs.length],
+          ArrowLeft: tabs[(i - 1 + tabs.length) % tabs.length],
+          Home: tabs[0],
+          End: tabs[tabs.length - 1],
+        }[ev.key];
+        if (to) {
+          ev.preventDefault();
+          select(to);
+          to.focus();
+        }
+      });
     });
   }
 
@@ -185,30 +277,24 @@
     }
     $('test-connection').addEventListener('click', testConnection);
 
-    $('toggle-key').addEventListener('click', () => {
-      $('apiKey').type = $('apiKey').type === 'password' ? 'text' : 'password';
+    document.querySelectorAll('[data-reveal]').forEach((btn) => {
+      btn.addEventListener('click', () => toggleReveal(btn));
     });
-    $('generate-token').addEventListener('click', () => {
-      homebridge.request('/mcp/token').then((res) => {
+    $('generate-token').addEventListener('click', (ev) => {
+      busy(ev.currentTarget, homebridge.request('/mcp/token').then((res) => {
         $('http-token').value = res.token;
         save();
-      });
+        homebridge.toast.success('New token generated');
+      }, (e) => {
+        homebridge.toast.error(e.message || String(e), 'Could not generate a token');
+      }));
     });
-    document.querySelectorAll('[data-snippet]').forEach((button) => {
-      button.addEventListener('click', () => {
-        document.querySelectorAll('[data-snippet]').forEach((b) => {
-          b.classList.remove('active'); 
-        });
-        button.classList.add('active');
-        snippetTab = button.dataset.snippet;
-        renderSnippet();
-      });
-    });
-    $('copy-snippet').addEventListener('click', () => {
-      navigator.clipboard.writeText($('snippet').textContent).then(() => {
-        homebridge.toast.success('Copied to the clipboard.');
-      });
-    });
+    if (window.MpKit && window.MpKit.Tabs) {
+      window.MpKit.Tabs.init('#snippet-tabs', { onChange: selectSnippetTab });
+    } else {
+      initSnippetTabsManually();
+    }
+    $('copy-snippet').addEventListener('click', copySnippet);
     $('include-token').addEventListener('change', renderSnippet);
     document.querySelectorAll('input, select').forEach((el) => {
       if (el.id !== 'include-token') {

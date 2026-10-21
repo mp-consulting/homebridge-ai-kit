@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Settings page** uses `@mp-consulting/homebridge-ui-kit` 1.4.0: long device names wrap to two lines, tabs scroll instead of wrapping, buttons press in, hover effects only apply with a mouse or trackpad, dialogs and toasts ease in and out, and the Assistant glow no longer repaints every frame.
+- **Settings page**: the Assistant and MCP clients settings share one surface, split into two sections. The API key, client token and Homebridge API token each have a show / hide button (eye icon, `aria-pressed`). The client snippet tabs are keyboard-navigable tabs (`MpKit.Tabs`), and the Copy button sits beside the snippet instead of over it. The HTTP settings fade in when switched on (not with reduced motion).
+
+### Fixed
+
+- **Settings page**: Test connection and Generate are marked busy and disabled while their request runs; Generate confirms the new token. Copy says "Copied" on the button, and when the clipboard is unavailable it selects the snippet and shows an error. The snippet is rebuilt once typing pauses rather than on every keystroke, and a slow, older response can no longer overwrite a newer one.
+
 ## [3.1.0] - 2026-10-18
 
 ### Added
