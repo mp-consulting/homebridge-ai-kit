@@ -136,6 +136,8 @@ jobs:
       # OpenSSL 3.0 does not know, against a store without Apple's root, and so reports every
       # Developer ID signature as unsigned. This checks the same things: the PKCS#7 signature
       # over the bundle, its chain to Apple Root CA, and a code-signing certificate.
+      # -ignore_critical: Developer ID certificates carry Apple's critical marker extension
+      # (1.2.840.113635.100.6.1.13), which OpenSSL does not know and would otherwise reject.
       - name: Verify Claude extension signature
         if: env.SIGN == 'true'
         run: |
@@ -153,7 +155,7 @@ jobs:
           curl -fsSL https://www.apple.com/appleca/AppleIncRootCertificate.cer -o "$WORK/root.cer"
           openssl x509 -inform DER -in "$WORK/root.cer" -out "$WORK/root.pem"
           openssl cms -verify -binary -inform DER -in "$WORK/signature.der" -content "$WORK/content.bin" \
-            -CAfile "$WORK/root.pem" -purpose any -out /dev/null
+            -CAfile "$WORK/root.pem" -purpose any -ignore_critical -out /dev/null
           openssl pkcs7 -inform DER -in "$WORK/signature.der" -print_certs \
             | openssl x509 -noout -subject -ext extendedKeyUsage | tee /dev/stderr | grep -q 'Code Signing'
 
