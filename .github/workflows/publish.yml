@@ -3,6 +3,13 @@ name: Publish
 on:
   release:
     types: [published]
+  # Re-runs a release that is already tagged with this workflow file, e.g. to attach the
+  # extension after a fix here. Steps already done (npm versions) are skipped.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, e.g. v3.1.1
+        required: true
 
 permissions:
   contents: read
@@ -14,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -73,12 +82,14 @@ jobs:
       contents: write
       id-token: write  # MCP registry login (GitHub OIDC)
     env:
-      TAG: ${{ github.event.release.tag_name }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
       # The extension is signed for Claude only when a Developer ID certificate is set.
       SIGN: ${{ secrets.DEVELOPER_ID_CERTIFICATE != '' }}
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -119,7 +130,32 @@ jobs:
           done
           npx --yes @anthropic-ai/mcpb@2.1.2 sign "$MCPB" --cert "$WORK/cert.pem" --key "$WORK/key.pem" \
             --intermediate "$WORK/DeveloperIDG2CA.pem" "$WORK/DeveloperIDCA.pem"
-          npx --yes @anthropic-ai/mcpb@2.1.2 verify "$MCPB"
+
+      # `mcpb verify` cannot pass on Linux: it checks the chain with
+      # `openssl verify -purpose codesigning -CApath /etc/ssl/certs`, a purpose the runner's
+      # OpenSSL 3.0 does not know, against a store without Apple's root, and so reports every
+      # Developer ID signature as unsigned. This checks the same things: the PKCS#7 signature
+      # over the bundle, its chain to Apple Root CA, and a code-signing certificate.
+      - name: Verify Claude extension signature
+        if: env.SIGN == 'true'
+        run: |
+          WORK="$RUNNER_TEMP/mcpb-verify"
+          mkdir -p "$WORK"
+          python3 - "$MCPB" "$WORK" <<'PY'
+          import struct, sys
+          data = open(sys.argv[1], "rb").read()
+          end = data.rindex(b"MCPB_SIG_END")
+          start = data.rindex(b"MCPB_SIG_V1", 0, end)
+          size = struct.unpack_from("<I", data, start + 11)[0]
+          open(sys.argv[2] + "/content.bin", "wb").write(data[:start])
+          open(sys.argv[2] + "/signature.der", "wb").write(data[start + 15:start + 15 + size])
+          PY
+          curl -fsSL https://www.apple.com/appleca/AppleIncRootCertificate.cer -o "$WORK/root.cer"
+          openssl x509 -inform DER -in "$WORK/root.cer" -out "$WORK/root.pem"
+          openssl cms -verify -binary -inform DER -in "$WORK/signature.der" -content "$WORK/content.bin" \
+            -CAfile "$WORK/root.pem" -purpose any -out /dev/null
+          openssl pkcs7 -inform DER -in "$WORK/signature.der" -print_certs \
+            | openssl x509 -noout -subject -ext extendedKeyUsage | tee /dev/stderr | grep -q 'Code Signing'
 
       - name: Attach Claude extension
         env:
