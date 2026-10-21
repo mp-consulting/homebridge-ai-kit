@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release workflow**: the signed Claude extension is checked with `openssl cms` against Apple Root CA instead of `mcpb verify`, which cannot pass on the Linux runner (its OpenSSL has no `codesigning` purpose and its store no Apple root) and so stopped 3.1.1's extension from being attached. The workflow can also be re-run by hand for an existing release tag.
+
 ## [3.1.1] - 2026-10-21
 
 ### Changed
