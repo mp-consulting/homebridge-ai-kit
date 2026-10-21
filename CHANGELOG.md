@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Settings page** uses `@mp-consulting/homebridge-ui-kit` 1.4.0: long device names wrap to two lines, tabs scroll instead of wrapping, buttons press in, hover effects only apply with a mouse or trackpad, dialogs and toasts ease in and out, and the Assistant glow no longer repaints every frame.
 - **Settings page**: the Assistant and MCP clients settings share one surface, split into two sections. The API key, client token and Homebridge API token each have a show / hide button (eye icon, `aria-pressed`). The client snippet tabs are keyboard-navigable tabs (`MpKit.Tabs`), and the Copy button sits beside the snippet instead of over it. The HTTP settings fade in when switched on (not with reduced motion).
 
 ### Fixed
