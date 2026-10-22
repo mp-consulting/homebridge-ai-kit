@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.2] - 2026-10-22
+
 ### Changed
 
 - **Tool descriptions**: 22 tools now say what they return, when to use them instead of a related tool, and what happens on failure, so clients and directories that grade descriptions (e.g. Glama) can tell them apart. `get_homebridge_status` and `get_server_status` no longer promise fields the Homebridge UI does not return, and `set_security_accessory`'s `value` describes target states instead of brightness.
