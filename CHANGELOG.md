@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.3] - 2026-10-22
+
+### Notes
+
+- Development dependency only: vite 8.3.5. The published packages and the Claude extension are unchanged from 3.1.2.
+
 ## [3.1.2] - 2026-10-22
 
 ### Changed
