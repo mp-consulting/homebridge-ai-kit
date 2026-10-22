@@ -6,6 +6,7 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { isPlainObject } from './redaction.js';
 
 export const PLATFORM_NAME = 'HomebridgeAiKit';
 export const PLUGIN_NAME = '@mp-consulting/homebridge-ai-kit';
@@ -104,10 +105,6 @@ export interface AiConfig {
   mcp: { http: McpHttpConfig };
 }
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined;
 }
@@ -126,8 +123,8 @@ function mcpClients(v: unknown): McpClientConfig[] | undefined {
   }
   const out: McpClientConfig[] = [];
   v.forEach((row, i) => {
-    const token = isObject(row) ? str(row.token) : undefined;
-    if (!isObject(row) || !token) {
+    const token = isPlainObject(row) ? str(row.token) : undefined;
+    if (!isPlainObject(row) || !token) {
       return;
     }
     const scope = str(row.scope) ?? 'read';
@@ -164,13 +161,13 @@ function nonNegativeInt(v: unknown, name: string): number | undefined {
 
 /** Applies defaults to a `HomebridgeAiKit` block. Throws on an unknown provider or invalid numbers. */
 export function resolveAiConfig(block: unknown = {}): AiConfig {
-  const b = isObject(block) ? block : {};
+  const b = isPlainObject(block) ? block : {};
   const providerRaw = str(b.provider) ?? 'anthropic';
   if (!(PROVIDER_NAMES as readonly string[]).includes(providerRaw)) {
     throw new Error(`Unknown AI provider "${providerRaw}". Use one of: ${PROVIDER_NAMES.join(', ')}`);
   }
   const provider = providerRaw as ProviderName;
-  const http = isObject(b.mcp) && isObject(b.mcp.http) ? b.mcp.http : {};
+  const http = isPlainObject(b.mcp) && isPlainObject(b.mcp.http) ? b.mcp.http : {};
 
   const config: AiConfig = {
     platform: PLATFORM_NAME,
@@ -238,10 +235,10 @@ export function defaultConfigPath(): string {
 
 /** The raw `HomebridgeAiKit` block of a parsed config.json, or undefined. */
 export function findAiBlock(config: unknown): Record<string, unknown> | undefined {
-  if (!isObject(config) || !Array.isArray(config.platforms)) {
+  if (!isPlainObject(config) || !Array.isArray(config.platforms)) {
     return undefined;
   }
-  return config.platforms.find((p): p is Record<string, unknown> => isObject(p) && p.platform === PLATFORM_NAME);
+  return config.platforms.find((p): p is Record<string, unknown> => isPlainObject(p) && p.platform === PLATFORM_NAME);
 }
 
 /**

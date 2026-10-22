@@ -115,6 +115,20 @@ export interface InstanceBackup {
   [key: string]: unknown;
 }
 
+/**
+ * The Homebridge UI's host metrics (`GET /api/status/cpu`, `ram`, `network`, `uptime`; same shapes in
+ * Glass UI and the stock UI). Values come from systeminformation; a route that failed is left out.
+ */
+export interface SystemInfo {
+  cpu?: { currentLoad?: number; cpuLoadHistory?: number[]; cpuTemperature?: { main?: number } };
+  /** `mem` is null when the UI's server metrics monitoring is turned off. */
+  memory?: { mem?: { total?: number; available?: number } | null };
+  network?: { net?: { iface?: string; operstate?: string; rx_sec?: number | null; tx_sec?: number | null } };
+  uptime?: { time?: { current?: number; uptime?: number; timezone?: string }; processUptime?: number };
+  /** Why a route failed, by part. */
+  errors?: Partial<Record<'cpu' | 'memory' | 'network' | 'uptime', string>>;
+}
+
 /** Glass UI scene: a named list of characteristic values set together. */
 export interface Scene {
   id: string;

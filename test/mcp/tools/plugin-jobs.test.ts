@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JOB_POLL, register, waitForJob } from '../../../src/mcp/tools/plugin-jobs.js';
 import { collectTools, mockClient } from '../helpers.js';
+import { HomebridgeApiError } from '../../../src/mcp/homebridge-client.js';
 
 const job = (status: string, output = 'npm output') => ({ id: 'j1', action: 'install', name: 'homebridge-x', status, output, startedAt: 't0' });
 
@@ -55,6 +56,13 @@ describe('plugin job tools', () => {
     const client = mockClient({ installPlugin: vi.fn().mockRejectedValue(new Error('404 not found')) });
     const result = await collectTools(register, client).get('install_plugin')!.handler({ name: 'x' });
     expect(result).toMatchObject({ isError: true, content: [{ text: 'Error installing plugin: 404 not found' }] });
+  });
+
+  it('says plugin installs need Glass UI when the route is missing', async () => {
+    const missing = new HomebridgeApiError(404, 'POST', '/api/plugins/install', '{"message":"Cannot POST /api/plugins/install"}');
+    const client = mockClient({ installPlugin: vi.fn().mockRejectedValue(missing) });
+    const result = await collectTools(register, client).get('install_plugin')!.handler({ name: 'x' });
+    expect(result.content[0].text).toBe('Error installing plugin: Installing plugins requires Homebridge Glass UI (this Homebridge UI has no POST /api/plugins/install).');
   });
 
   it('stops waiting at the deadline', async () => {

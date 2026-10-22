@@ -10,7 +10,10 @@ export const register: RegisterTools = (tool, client) => {
     'get_homebridge_status',
     {
       title: 'Homebridge status',
-      description: 'Check if Homebridge is running and get its current status (up/down, version, plugins status).',
+      description:
+        'Check whether the Homebridge process is running: returns status up, pending (starting or restarting) or down. ' +
+        'Use it after restart_homebridge to see when Homebridge is back. ' +
+        'For versions, paths and OS use get_server_status; for plugins running in their own process use list_child_bridges.',
       outputSchema: STATUS,
       annotations: READ,
     },
@@ -24,7 +27,11 @@ export const register: RegisterTools = (tool, client) => {
     'get_server_status',
     {
       title: 'Server information',
-      description: 'Get Homebridge server information including version, Node.js version, uptime, OS details, and Homebridge instance ID.',
+      description:
+        'Get details of the server Homebridge runs on: Node.js version, OS, service user, config.json, storage and plugin paths, ' +
+        'whether it runs in Docker, a Synology package or package mode, insecure mode, server time and the default network interface ' +
+        '(paths need an admin Homebridge token). Use it to check the environment, e.g. before installing a plugin; ' +
+        'whether Homebridge is running is get_homebridge_status.',
       outputSchema: SERVER_INFO,
       annotations: READ,
     },
@@ -38,7 +45,10 @@ export const register: RegisterTools = (tool, client) => {
     'restart_homebridge',
     {
       title: 'Restart Homebridge',
-      description: 'Restart the Homebridge service. This will temporarily make all accessories unavailable.',
+      description:
+        'Restart the whole Homebridge service, e.g. to load a config change or a newly installed plugin. ' +
+        'Every accessory is unavailable while it restarts. Returns once the restart is requested; poll get_homebridge_status until it is up. ' +
+        'To reload one plugin that runs as a child bridge, use restart_child_bridge instead.',
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
     handle('restarting Homebridge', async () => {
@@ -65,6 +75,7 @@ export const register: RegisterTools = (tool, client) => {
       title: 'List cached accessories',
       description:
         'List cached accessories stored by Homebridge (UUID, name, plugin, platform, category and cacheFile). These persist across restarts. ' +
+        'Use it to find stale accessories (e.g. from a removed plugin) to delete with remove_cached_accessory; for live state use list_accessories. ' +
         'Pass verbose=true for the full cached objects including services and context.',
       inputSchema: {
         verbose: z.boolean().optional().describe('Return the full cached accessory objects (large). Default false.'),
@@ -106,7 +117,9 @@ export const register: RegisterTools = (tool, client) => {
     'reset_cached_accessories',
     {
       title: 'Reset all cached accessories',
-      description: 'Reset ALL cached accessories. WARNING: This removes all cached accessories and requires a Homebridge restart.',
+      description:
+        'Delete ALL cached accessories; Homebridge must restart afterwards. HomeKit may then see them as new accessories and lose their ' +
+        'Home app rooms, names and automations. Only use it when the user asks for a full reset; for one stale accessory use remove_cached_accessory.',
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     handle('resetting cached accessories', async () => {

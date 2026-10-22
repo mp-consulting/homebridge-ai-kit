@@ -3,8 +3,9 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Variables } from '@modelcontextprotocol/sdk/shared/uriTemplate.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import type { HomebridgeClient } from './homebridge-client.js';
-import { CHILD_BRIDGE_FIELDS } from './tools/child-bridges.js';
+import { CHILD_BRIDGE_FIELDS, normBridgeId } from './tools/child-bridges.js';
 import { pick } from './tools/helpers.js';
+import { json } from './resources.js';
 
 export const RESOURCE_TEMPLATES = {
   accessory: 'homebridge://accessory/{uniqueId}',
@@ -15,9 +16,6 @@ export const RESOURCE_TEMPLATES = {
 /** Completion suggestions are capped at this many values (the MCP limit is 100). */
 const MAX_COMPLETIONS = 50;
 
-function json(uri: string, data: unknown) {
-  return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data) }] };
-}
 
 function variable(variables: Variables, name: string): string {
   const value = variables[name];
@@ -39,7 +37,6 @@ function completeFrom(values: string[], typed: string): string[] {
   return values.filter((v) => v.toLowerCase().includes(t)).slice(0, MAX_COMPLETIONS);
 }
 
-const normBridge = (id: string) => id.replace(/:/g, '').toUpperCase();
 
 function notFound(what: string): never {
   throw new McpError(ErrorCode.InvalidParams, `${what} not found`);
@@ -114,11 +111,11 @@ export function registerResourceTemplates(server: McpServer, client: HomebridgeC
       mimeType: 'application/json',
     },
     async (uri, variables) => {
-      const id = normBridge(variable(variables, 'id'));
+      const id = normBridgeId(variable(variables, 'id'));
       const [bridge, health] = await Promise.all([
-        client.getChildBridges().then((list) => list.find((b) => normBridge(b.username) === id)),
+        client.getChildBridges().then((list) => list.find((b) => normBridgeId(b.username) === id)),
         client.getChildBridgeHealth().then(
-          (r) => r.bridges.find((b) => normBridge(b.username) === id),
+          (r) => r.bridges.find((b) => normBridgeId(b.username) === id),
           () => undefined,
         ),
       ]);

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { compactHistory, downsample, register, summarize } from '../../../src/mcp/tools/history.js';
 import { collectTools, mockClient } from '../helpers.js';
+import { HomebridgeApiError } from '../../../src/mcp/homebridge-client.js';
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -113,11 +114,12 @@ describe('get_accessory_history', () => {
   });
 
   it('says the history needs Glass UI when the endpoint is missing', async () => {
-    const { result } = await call({ uniqueId: 'acc-1' }, vi.fn().mockRejectedValue(new Error('Homebridge API error 404 GET /api/accessories/acc-1/history: Not Found')));
+    const missing = new HomebridgeApiError(404, 'GET', '/api/accessories/acc-1/history', '{"message":"Cannot GET /api/accessories/acc-1/history"}');
+    const { result } = await call({ uniqueId: 'acc-1' }, vi.fn().mockRejectedValue(missing));
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toBe(
-      'Error getting accessory history: Homebridge API error 404 GET /api/accessories/acc-1/history: Not Found (accessory history needs Homebridge Glass UI)',
+      'Error getting accessory history: Accessory history requires Homebridge Glass UI (this Homebridge UI has no GET /api/accessories/acc-1/history).',
     );
   });
 

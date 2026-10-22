@@ -110,6 +110,12 @@ describe('plugins tools', () => {
       expect(result.content[0].text).toBe('<untrusted-data source="changelog:homebridge-hue">\n# Changelog\n## 1.0.0\n</untrusted-data>');
     });
 
+    it('marks the Homebridge UI { changelog } answer as untrusted data', async () => {
+      const { handlers } = handlersFor({ getPluginChangelog: vi.fn().mockResolvedValue({ changelog: '# Changelog' }) });
+      const result = await handlers.get('get_plugin_changelog')!({ pluginName: 'homebridge-hue' });
+      expect(result.content[0].text).toBe('<untrusted-data source="changelog:homebridge-hue">\n# Changelog\n</untrusted-data>');
+    });
+
     it('stringifies non-string changelog', async () => {
       const { handlers } = handlersFor({ getPluginChangelog: vi.fn().mockResolvedValue({ entries: [] }) });
       const result = await handlers.get('get_plugin_changelog')!({ pluginName: 'homebridge-hue' });

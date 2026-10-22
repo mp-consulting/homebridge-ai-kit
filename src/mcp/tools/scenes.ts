@@ -56,13 +56,13 @@ export const register: RegisterTools = (tool, client) => {
       scope: 'control',
     },
     handle('running scene', async ({ scene: ref }) => {
-      const scenes = await listScenes(client);
+      const [scenes, accessories] = await Promise.all([listScenes(client), client.getAccessories()]);
       const scene = findScene(scenes, ref);
       if (!scene) {
         return errorResult(`No scene "${ref}". Scenes: ${scenes.map((s) => s.name).join(', ') || 'none'}.`);
       }
       // A model-supplied "confirm" flag is not the user's consent: security changes only go through the destructive tool.
-      const byId = new Map((await client.getAccessories()).map((a) => [a.uniqueId, a]));
+      const byId = new Map(accessories.map((a) => [a.uniqueId, a]));
       const sensitive = scene.actions.filter((a) => isSecurityWrite(byId.get(a.uniqueId), a.characteristicType));
       if (sensitive.length) {
         return errorResult(

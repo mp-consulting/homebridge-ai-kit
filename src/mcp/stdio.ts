@@ -7,6 +7,7 @@ import { createAuditLog } from './audit.js';
 import type { AuditLog } from './audit.js';
 import type { ClientToken } from './scopes.js';
 import { isScope } from './scopes.js';
+import { errorMessage } from './tools/helpers.js';
 
 type Env = Record<string, string | undefined>;
 
@@ -91,7 +92,7 @@ function clientFromEnv(prog: string): { client: HomebridgeClient } & EnvServerOp
   try {
     client = new HomebridgeClient();
   } catch (error) {
-    console.error(`${prog}: ${error instanceof Error ? error.message : error}`);
+    console.error(`${prog}: ${errorMessage(error)}`);
     process.exit(1);
   }
 
@@ -144,7 +145,7 @@ export async function runHttpFromEnv(prog: string, { port, host }: { port?: numb
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
   } catch (error) {
-    console.error(`${prog}: ${error instanceof Error ? error.message : error}`);
+    console.error(`${prog}: ${errorMessage(error)}`);
     process.exit(1);
   }
 }

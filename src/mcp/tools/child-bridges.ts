@@ -7,6 +7,9 @@ import { CHILD_BRIDGE_HEALTH, CHILD_BRIDGE_LIST } from './output-schemas.js';
 /** What is shown of a child bridge: never its HomeKit/Matter pairing codes. */
 export const CHILD_BRIDGE_FIELDS = ['username', 'name', 'plugin', 'identifier', 'status', 'paired', 'pid', 'port', 'manuallyStopped'] as const;
 
+/** A child bridge username compared without colons or case: `0e:3c:…` and `0E3C…` are the same bridge. */
+export const normBridgeId = (id: string) => id.replace(/:/g, '').toUpperCase();
+
 const deviceId = z
   .string()
   .regex(/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$|^[0-9A-Fa-f]{12}$/, 'must be a child bridge username like 0E:3C:12:AB:CD:EF')
@@ -17,7 +20,10 @@ export const register: RegisterTools = (tool, client) => {
     'list_child_bridges',
     {
       title: 'List child bridges',
-      description: 'List the child bridges (plugins running in their own process) with their status (ok, pending, down) and whether they were stopped manually.',
+      description:
+        'List the child bridges (plugins running in their own process) with username (the deviceId other child bridge tools take), name, plugin, ' +
+        'status (ok, pending, down), paired, pid, port and whether they were stopped manually. ' +
+        'Use it to find a plugin that is down; get_child_bridge_health adds crash counts.',
       outputSchema: CHILD_BRIDGE_LIST,
       annotations: READ,
     },
@@ -43,8 +49,7 @@ export const register: RegisterTools = (tool, client) => {
       if (!deviceId) {
         return structuredResult({ ...report });
       }
-      const norm = (id: string) => id.replace(/:/g, '').toUpperCase();
-      const bridges = report.bridges.filter((b) => norm(b.username) === norm(deviceId));
+      const bridges = report.bridges.filter((b) => normBridgeId(b.username) === normBridgeId(deviceId));
       return structuredResult({ ...report, bridges });
     }),
   );
@@ -65,7 +70,17 @@ export const register: RegisterTools = (tool, client) => {
       }),
     );
 
-  control('restart', 'Restart child bridge', 'Restart one child bridge without restarting Homebridge. Its accessories are briefly unavailable.');
+  control(
+    'restart',
+    'Restart child bridge',
+    'Restart one child bridge without restarting Homebridge, e.g. after changing its plugin\'s config. Its accessories are briefly unavailable. ' +
+      'Returns once the restart is requested; check list_child_bridges for its status.',
+  );
   control('stop', 'Stop child bridge', 'Stop one child bridge. Its accessories stay unavailable until it is started again.');
-  control('start', 'Start child bridge', 'Start a child bridge that was stopped.');
+  control(
+    'start',
+    'Start child bridge',
+    'Start a child bridge that was stopped (manuallyStopped in list_child_bridges), bringing its accessories back. ' +
+      'Returns once the start is requested; check list_child_bridges for its status.',
+  );
 };

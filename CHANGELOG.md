@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Tool descriptions**: 22 tools now say what they return, when to use them instead of a related tool, and what happens on failure, so clients and directories that grade descriptions (e.g. Glama) can tell them apart. `get_homebridge_status` and `get_server_status` no longer promise fields the Homebridge UI does not return, and `set_security_accessory`'s `value` describes target states instead of brightness.
+
 ### Fixed
+
+- **`get_system_info`** works again. It called `/api/platform-tools/system-information`, which neither Homebridge Glass UI nor the stock Homebridge UI has, so it always failed. It now reads `/api/status/cpu`, `ram`, `network` and `uptime` and returns a summary: CPU load (now, recent average and peak) and temperature, memory total / available / used %, network throughput, host and UI uptime and the server time. A route that fails is reported in `errors` while the others still answer, and the tool says when the UI's server metrics monitoring is turned off. The nightly health check prompt asks it about CPU and memory instead of disk space, which it never reported.
+- **Plugin install, update, uninstall and job tools** say they need Homebridge Glass UI on another Homebridge UI, instead of returning its raw `Cannot POST` 404. `get_accessory_history` now detects a missing Glass UI the same way, so an ordinary 404 is no longer blamed on it.
+- **`homebridge://logs/recent`** no longer starts with a cut-off line when the log is longer than what it reads.
+- **`get_plugin_changelog`** marks the changelog as untrusted data again. The Homebridge UI answers `{ changelog: '…' }`, which went back as plain JSON without the `<untrusted-data>` wrapper.
 
 - **Release workflow**: the signed Claude extension is checked with `openssl cms` against Apple Root CA instead of `mcpb verify`, which cannot pass on the Linux runner (its OpenSSL has no `codesigning` purpose and its store no Apple root) and so stopped 3.1.1's extension from being attached. The workflow can also be re-run by hand for an existing release tag.
 

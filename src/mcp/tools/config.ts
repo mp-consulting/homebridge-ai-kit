@@ -3,6 +3,7 @@ import type { RegisterTools } from '../types.js';
 import { REDACTED, containsRedacted, redactSecrets, restoreSecrets } from '@mp-consulting/homebridge-ai-core';
 import { READ, errorResult, handle, jsonResult, textResult } from './helpers.js';
 import { previewConfigChange, writeConfig } from './config-backups.js';
+import { isObject } from '../config-diff.js';
 
 const dryRun = z
   .boolean()
@@ -21,17 +22,13 @@ const configSchema = z.looseObject({
 
 type Block = Record<string, unknown>;
 
-function isBlock(v: unknown): v is Block {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 /** Deep merge: objects merge key by key, `null` deletes a key, anything else (arrays included) replaces. */
 export function mergePatch(target: Block, patch: Block): Block {
   const out: Block = { ...target };
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) {
       delete out[key];
-    } else if (isBlock(value) && isBlock(out[key])) {
+    } else if (isObject(value) && isObject(out[key])) {
       out[key] = mergePatch(out[key] as Block, value);
     } else {
       out[key] = value;
@@ -131,7 +128,7 @@ export const register: RegisterTools = (tool, client, { allowSecrets = false } =
       const list = Array.isArray(config[listKey]) ? (config[listKey] as unknown[]) : [];
       const matches = list
         .map((b, index) => ({ b, index }))
-        .filter(({ b }) => isBlock(b) && b[idKey] === id && (name === undefined || b.name === name));
+        .filter(({ b }) => isObject(b) && b[idKey] === id && (name === undefined || b.name === name));
       if (matches.length === 0) {
         return errorResult(`No ${idKey} block "${id}"${name ? ` named "${name}"` : ''} in config.json.`);
       }

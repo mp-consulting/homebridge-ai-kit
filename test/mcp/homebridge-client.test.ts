@@ -318,11 +318,49 @@ describe('HomebridgeClient', () => {
       expect(fetchMock.mock.calls[1][0]).toContain('/reset-cached-accessories');
     });
 
-    it('getSystemInfo → GET /api/platform-tools/system-information', async () => {
-      const client = await clientWithAuth();
-      fetchMock.mockResolvedValueOnce(jsonResponse({ cpu: {} }));
-      const result = await client.getSystemInfo();
-      expect(result).toEqual({ cpu: {} });
+    describe('getSystemInfo', () => {
+      /** Answers the login, then each metric route by path; a missing path is a 404. */
+      function routeMetrics(bodies: Record<string, unknown>) {
+        fetchMock.mockImplementation(async (input) => {
+          const url = String(input);
+          if (url.endsWith('/api/auth/login')) {
+            return jsonResponse({ access_token: 'tok' });
+          }
+          const path = new URL(url).pathname;
+          return path in bodies ? jsonResponse(bodies[path]) : jsonResponse({ message: 'Not Found' }, 404);
+        });
+      }
+
+      it('reads GET /api/status/cpu, ram, network and uptime', async () => {
+        const client = await createClient();
+        routeMetrics({
+          '/api/status/cpu': { currentLoad: 12 },
+          '/api/status/ram': { mem: { total: 1 } },
+          '/api/status/network': { net: { iface: 'eth0' } },
+          '/api/status/uptime': { processUptime: 5 },
+        });
+        expect(await client.getSystemInfo()).toEqual({
+          cpu: { currentLoad: 12 },
+          memory: { mem: { total: 1 } },
+          network: { net: { iface: 'eth0' } },
+          uptime: { processUptime: 5 },
+        });
+      });
+
+      it('leaves out a part whose route fails and names it in errors', async () => {
+        const client = await createClient();
+        routeMetrics({ '/api/status/cpu': { currentLoad: 12 }, '/api/status/ram': { mem: null }, '/api/status/uptime': { processUptime: 5 } });
+        const result = await client.getSystemInfo();
+        expect(result).toMatchObject({ cpu: { currentLoad: 12 }, memory: { mem: null }, uptime: { processUptime: 5 } });
+        expect(result).not.toHaveProperty('network');
+        expect(Object.keys(result.errors ?? {})).toEqual(['network']);
+      });
+
+      it('throws when every route fails', async () => {
+        const client = await createClient();
+        routeMetrics({});
+        await expect(client.getSystemInfo()).rejects.toThrow();
+      });
     });
 
     it('getAccessory → GET /api/accessories/:id', async () => {

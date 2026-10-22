@@ -43,7 +43,7 @@ export function registerPrompts(server: McpServer): void {
  * Multi-step workflow prompts. Their text lives here rather than in ai-core's PROMPTS because
  * they name tools only this MCP server has (scenes, health, backups).
  */
-export const WORKFLOW_PROMPTS = {
+const WORKFLOW_PROMPTS = {
   'troubleshoot-device': {
     title: 'Troubleshoot a device',
     description: 'Find out why one accessory misbehaves: its state, its plugin, child bridge health and the related log lines.',
@@ -68,7 +68,7 @@ export const WORKFLOW_PROMPTS = {
         `3) search_logs with level "error" and since "${window}" (limit 200): group the errors by plugin and count them; ` +
         'then level "warn" for anything recurring. ' +
         '4) list_plugins: plugins with updates available. 5) list_backups (skip if unavailable): is the newest backup less than two days old? ' +
-        '6) get_system_info: low disk space or memory. ' +
+        '6) get_system_info: high CPU load, low available memory or a hot CPU. ' +
         'Report: an overall verdict (healthy / needs attention / broken), then one line per finding with the suggested action. Change nothing.'
       );
     },

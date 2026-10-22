@@ -9,8 +9,8 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { createServer, VERSION } from '../mcp/create-server.js';
 import type { HomebridgeClient } from '../mcp/homebridge-client.js';
 import type { AuditSink } from '../mcp/audit.js';
-import { untrusted } from '../mcp/tools/helpers.js';
-import { PROMPTS, addUsage, complete, redactSecrets } from '@mp-consulting/homebridge-ai-core';
+import { errorMessage, untrusted } from '../mcp/tools/helpers.js';
+import { PROMPTS, ZERO_USAGE, addUsage, complete, redactSecrets } from '@mp-consulting/homebridge-ai-core';
 import type { AiProvider, ChatMessage, ChatResult, ContentPart, TokenUsage, ToolCall, ToolDefinition } from '@mp-consulting/homebridge-ai-core';
 
 export type AgentEvent =
@@ -118,7 +118,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
     const definitions = tools.map(toToolDefinition);
 
     const toolCalls: AgentToolCall[] = [];
-    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+    let usage: TokenUsage = ZERO_USAGE;
     let last: ChatResult | undefined;
     let steps = 0;
 
@@ -137,28 +137,25 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
       for (const call of last.toolCalls) {
         onEvent?.({ type: 'tool_call', call });
         let result: string;
-        let isError: boolean;
-        // What the model sees: tool output carries Homebridge text (names, logs), so it goes back as untrusted data.
-        let content: string | undefined;
-        if (destructive.has(call.name) && !(await options.confirm?.(call))) {
+        let isError = true;
+        const refused = destructive.has(call.name) && !(await options.confirm?.(call));
+        if (refused) {
           result = `The user did not allow ${call.name}. Do not retry it; explain what it would have done instead.`;
-          isError = true;
           await recordRefusal(options.audit, call);
         } else {
           try {
             const out = await mcp.callTool({ name: call.name, arguments: call.arguments });
             result = resultText(out);
             isError = out.isError === true;
-            content = untrusted(call.name, result);
           } catch (error) {
-            result = error instanceof Error ? error.message : String(error);
-            isError = true;
-            content = untrusted(call.name, result);
+            result = errorMessage(error);
           }
         }
         onEvent?.({ type: 'tool_result', call, result, isError });
         toolCalls.push({ ...call, result, isError });
-        results.push({ type: 'tool_result', toolCallId: call.id, name: call.name, content: content ?? result, isError });
+        // What the model sees: tool output carries Homebridge text (names, logs), so it goes back as untrusted data.
+        const content = refused ? result : untrusted(call.name, result);
+        results.push({ type: 'tool_result', toolCallId: call.id, name: call.name, content, isError });
       }
       messages.push({ role: 'user', content: results });
     }

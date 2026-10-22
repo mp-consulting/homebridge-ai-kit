@@ -11,13 +11,7 @@ export const accessoryFilterShape = {
   name: z.string().optional().describe('Filter by service name (case-insensitive, contains match)'),
 };
 
-export interface AccessoryFilter {
-  room?: string;
-  type?: string;
-  manufacturer?: string;
-  excludeManufacturer?: string;
-  name?: string;
-}
+type AccessoryFilter = z.infer<z.ZodObject<typeof accessoryFilterShape>>;
 
 /**
  * Fetches the accessories and applies `filter`. Rooms come from the Homebridge UI

@@ -17,7 +17,16 @@ function compactAccessory(acc: Accessory) {
 
 const INTEGER_FORMATS = new Set(['int', 'uint8', 'uint16', 'uint32', 'uint64']);
 
-type Value = string | number | boolean;
+export type Value = string | number | boolean;
+
+/** A value tools accept for a characteristic, before {@link checkCharacteristicValue} coerces it. */
+export const VALUE = z.union([z.string(), z.number(), z.boolean()]);
+
+/** The accessory's characteristic named `type`, matched case-insensitively. */
+export function findCharacteristic(characteristics: CharacteristicInfo[] | undefined, type: string): CharacteristicInfo | undefined {
+  const wanted = type.toLowerCase();
+  return characteristics?.find((c) => c.type.toLowerCase() === wanted);
+}
 
 /**
  * Check `value` against a characteristic's metadata (format, range, step,
@@ -76,11 +85,11 @@ export function checkCharacteristicValue(info: CharacteristicInfo, value: Value)
   return { value };
 }
 
-export { SECURITY_CHARACTERISTICS, SECURITY_SERVICES, isSecurityWrite } from '../accessory-select.js';
+export { isSecurityWrite } from '../accessory-select.js';
 
 const SET_INPUT = {
   uniqueId: z.string().min(1).describe('The unique identifier of the accessory'),
-  value: z.union([z.string(), z.number(), z.boolean()]).describe('The value to set (e.g. true/false for On, 0-100 for Brightness)'),
+  value: VALUE.describe('The value to set (e.g. true/false for On, 0-100 for Brightness)'),
 };
 
 export const register: RegisterTools = (tool, client) => {
@@ -96,7 +105,7 @@ export const register: RegisterTools = (tool, client) => {
     const characteristics = accessory?.serviceCharacteristics;
     let toSend: Value = value;
     if (characteristics?.length) {
-      const info = characteristics.find((c) => c.type.toLowerCase() === characteristicType.toLowerCase());
+      const info = findCharacteristic(characteristics, characteristicType);
       if (!info) {
         const writable = characteristics.filter((c) => c.canWrite !== false).map((c) => c.type);
         return errorResult(`${accessory.serviceName ?? uniqueId} has no characteristic "${characteristicType}". Writable: ${writable.join(', ') || 'none'}.`);
@@ -115,7 +124,11 @@ export const register: RegisterTools = (tool, client) => {
     'list_accessories',
     {
       title: 'List accessories',
-      description: 'List all Homebridge accessories with their current state (on/off, brightness, temperature, etc.)',
+      description:
+        'List Homebridge accessories (one entry per service) with uniqueId, serviceName, type, manufacturer, model and current values ' +
+        '(On, Brightness, CurrentTemperature, ...). Filters combine; with none, every accessory is returned. An unknown room is an error that lists the rooms. ' +
+        'Start here to find the uniqueId for get_accessory, set_accessory, set_accessories or get_accessory_history. ' +
+        "get_cached_accessories shows Homebridge's on-disk cache instead of live state.",
       inputSchema: accessoryFilterShape,
       outputSchema: ACCESSORY_LIST,
       annotations: READ,
@@ -135,7 +148,10 @@ export const register: RegisterTools = (tool, client) => {
     'get_accessory',
     {
       title: 'Get accessory',
-      description: 'Get detailed information about a specific accessory by its uniqueId. Use list_accessories first to find the uniqueId.',
+      description:
+        'Get one accessory by uniqueId with every characteristic: its value, format, unit, min/max/step, valid values and whether it is writable, ' +
+        'plus the accessory information (manufacturer, model, firmware). Read it before set_accessory to see which characteristicTypes and values it accepts. ' +
+        'Use list_accessories first to find the uniqueId; an unknown uniqueId returns an error.',
       inputSchema: { uniqueId: z.string().min(1).describe('The unique identifier of the accessory') },
       outputSchema: ACCESSORY,
       annotations: READ,
@@ -182,7 +198,7 @@ export const register: RegisterTools = (tool, client) => {
       inputSchema: {
         uniqueId: SET_INPUT.uniqueId,
         characteristicType: z.string().min(1).describe("'LockTargetState', 'TargetDoorState' or 'SecuritySystemTargetState'"),
-        value: SET_INPUT.value,
+        value: SET_INPUT.value.describe('The target state number from the list above, e.g. 1 to lock or 3 to disarm'),
       },
       // Unlocking a door or disarming an alarm is a physical-security risk: destructive, so clients confirm.
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
@@ -195,7 +211,10 @@ export const register: RegisterTools = (tool, client) => {
     'get_accessory_layout',
     {
       title: 'Get room layout',
-      description: 'Get the accessories room layout as configured in the Homebridge UI.',
+      description:
+        'Get the rooms set up in the Homebridge UI, each with its accessories (uniqueId, serviceName, type, manufacturer). ' +
+        'These are the Homebridge UI rooms, not HomeKit rooms. Use it to see which rooms exist and what is in each; ' +
+        'for the accessories of one room with their values, use list_accessories with room.',
       annotations: READ,
     },
     handle('getting layout', async () => {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AccessoryHistory, RegisterTools } from '../types.js';
-import { READ, errorMessage, handle, jsonResult } from './helpers.js';
+import { requireGlassUi } from '../homebridge-client.js';
+import { READ, handle, jsonResult, round } from './helpers.js';
 
 /** Glass UI keeps at most 365 days of history. */
 const MAX_HOURS = 24 * 365;
@@ -18,11 +19,6 @@ type Point = [number, number];
 /** `2026-10-04T03:15Z`: minute precision is plenty and saves tokens. */
 function at(t: number): string {
   return `${new Date(t).toISOString().slice(0, 16)}Z`;
-}
-
-function round(value: number, digits = 2): number {
-  const f = 10 ** digits;
-  return Math.round(value * f) / f;
 }
 
 /** Average `points` into at most `maxPoints` buckets of equal time (as Glass UI does). */
@@ -68,10 +64,10 @@ export function summarize(points: Point[], to: number) {
   const avg = duration > 0 ? weighted / duration : points.reduce((sum, [, v]) => sum + v, 0) / points.length;
   return {
     count: points.length,
-    min: { value: round(min[1]), at: at(min[0]) },
-    max: { value: round(max[1]), at: at(max[0]) },
-    avg: round(avg),
-    last: { value: round(last[1]), at: at(last[0]) },
+    min: { value: round(min[1], 2), at: at(min[0]) },
+    max: { value: round(max[1], 2), at: at(max[0]) },
+    avg: round(avg, 2),
+    last: { value: round(last[1], 2), at: at(last[0]) },
   };
 }
 
@@ -84,7 +80,7 @@ export function compactHistory(history: AccessoryHistory, hours: number, maxPoin
       ...(s.description ? { description: s.description } : {}),
       ...(s.unit ? { unit: s.unit } : {}),
       ...summarize(s.points, history.to),
-      points: downsample(s.points, maxPoints).map(([t, v]): [string, number] => [at(t), round(v)]),
+      points: downsample(s.points, maxPoints).map(([t, v]): [string, number] => [at(t), round(v, 2)]),
     }));
   return {
     uniqueId: history.uniqueId,
@@ -125,17 +121,8 @@ export const register: RegisterTools = (tool, client) => {
       annotations: READ,
     },
     handle('getting accessory history', async ({ uniqueId, hours = 24, type, maxPoints = DEFAULT_POINTS }) => {
-      let history: AccessoryHistory;
-      try {
-        history = await client.getAccessoryHistory(uniqueId, { hours, type, maxPoints: FETCH_POINTS });
-      } catch (error) {
-        // Glass UI answers an unknown uniqueId with no series; a 404 means the
-        // endpoint itself is missing (homebridge-config-ui-x has none).
-        if (/ error 404 /.test(errorMessage(error))) {
-          throw new Error(`${errorMessage(error)} (accessory history needs Homebridge Glass UI)`, { cause: error });
-        }
-        throw error;
-      }
+      // Glass UI answers an unknown uniqueId with no series; the stock Homebridge UI has no history route.
+      const history = await requireGlassUi('Accessory history', () => client.getAccessoryHistory(uniqueId, { hours, type, maxPoints: FETCH_POINTS }));
       return jsonResult(compactHistory(history, hours, maxPoints));
     }),
   );

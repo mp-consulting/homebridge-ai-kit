@@ -8,7 +8,7 @@ import { diffJson, unifiedJsonDiff } from '../config-diff.js';
 import { READ, errorResult, handle, jsonResult, textResult } from './helpers.js';
 
 /** Path-level changes listed in a dry run; the unified diff always shows everything. */
-export const MAX_LISTED_CHANGES = 100;
+const MAX_LISTED_CHANGES = 100;
 
 type Config = Record<string, unknown>;
 
@@ -18,7 +18,7 @@ type Config = Record<string, unknown>;
  * so that is the snapshot `restore_config` rolls back to. Undefined when the UI
  * can't list its backups.
  */
-export async function latestConfigBackupId(client: HomebridgeClient): Promise<string | undefined> {
+async function latestConfigBackupId(client: HomebridgeClient): Promise<string | undefined> {
   try {
     const backups = await client.listConfigBackups();
     if (!Array.isArray(backups) || backups.length === 0) {
@@ -96,12 +96,12 @@ export const register: RegisterTools = (tool, client) => {
       scope: 'admin',
     },
     handle('restoring config', async ({ backupId, dryRun }): Promise<CallToolResult> => {
-      const backup = await client.getConfigBackup(backupId);
+      const [backup, current] = await Promise.all([client.getConfigBackup(backupId), dryRun ? client.getConfig() : undefined]);
       if (typeof backup.bridge !== 'object' || backup.bridge === null) {
         return errorResult(`Backup ${backupId} has no bridge block; refusing to restore it.`);
       }
-      if (dryRun) {
-        return jsonResult({ backupId, ...previewConfigChange(await client.getConfig(), backup) });
+      if (current) {
+        return jsonResult({ backupId, ...previewConfigChange(current, backup) });
       }
       return textResult(await writeConfig(client, backup, `Restored config.json from backup ${backupId}. Restart Homebridge to apply it.`));
     }),
@@ -128,7 +128,10 @@ export const register: RegisterTools = (tool, client) => {
     'list_backups',
     {
       title: 'List instance backups',
-      description: 'List the full Homebridge backups (.tar.gz) in the Homebridge UI backup directory, made by the nightly schedule or create_backup, newest first.',
+      description:
+        'List the full Homebridge backups (.tar.gz) in the Homebridge UI backup directory, made by the nightly schedule or create_backup, newest first: ' +
+        'id, timestamp, fileName and sizeMB. They are restored from the Homebridge UI; for config.json alone use list_config_backups and restore_config. ' +
+        'Needs Homebridge Glass UI.',
       annotations: READ,
     },
     handle('listing backups', async () =>

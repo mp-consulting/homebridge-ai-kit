@@ -18,6 +18,7 @@ import type {
   Room,
   Scene,
   SceneRunResult,
+  SystemInfo,
 } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -505,10 +506,29 @@ export class HomebridgeClient {
     return this.request('PUT', `/api/server/${action}/${encodeURIComponent(deviceId)}`);
   }
 
-  // ── Platform Tools ──────────────────────────────────────────────
+  // ── Host metrics ────────────────────────────────────────────────
 
-  async getSystemInfo(): Promise<unknown> {
-    return this.request('GET', '/api/platform-tools/system-information');
+  /**
+   * CPU, memory, network and uptime of the Homebridge host, from the UI's four metric routes.
+   * A part whose route fails is left out and named in `errors`; throws only when all four fail.
+   */
+  async getSystemInfo(): Promise<SystemInfo> {
+    const parts = { cpu: 'cpu', memory: 'ram', network: 'network', uptime: 'uptime' } as const;
+    const keys = Object.keys(parts) as Array<keyof typeof parts>;
+    const settled = await Promise.allSettled(keys.map((key) => this.request('GET', `/api/status/${parts[key]}`)));
+    if (settled.every((r) => r.status === 'rejected')) {
+      throw (settled[0] as PromiseRejectedResult).reason;
+    }
+    const info: Record<string, unknown> = {};
+    const errors: Record<string, string> = {};
+    settled.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        info[keys[i]] = result.value;
+      } else {
+        errors[keys[i]] = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      }
+    });
+    return { ...info, ...(Object.keys(errors).length ? { errors } : {}) } as SystemInfo;
   }
 
   // ── Logs ────────────────────────────────────────────────────────

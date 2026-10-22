@@ -169,10 +169,12 @@ describe('createServer', () => {
   });
 
   it('runs a tool end to end', async () => {
-    const client = mockClient({ getSystemInfo: vi.fn().mockResolvedValue({ os: 'linux' }) });
+    const client = mockClient({ getSystemInfo: vi.fn().mockResolvedValue({ uptime: { processUptime: 61.4 } }) });
     const result = await (await connect(client)).callTool({ name: 'get_system_info', arguments: {} });
 
-    expect(result.content).toEqual([{ type: 'text', text: '{"os":"linux"}' }]);
+    expect(result.content).toEqual([
+      { type: 'text', text: '{"uptime":{"hostSeconds":null,"homebridgeUiSeconds":61,"serverTime":null,"timezone":null}}' },
+    ]);
   });
 });
 

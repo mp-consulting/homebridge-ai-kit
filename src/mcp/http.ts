@@ -24,12 +24,12 @@ import { isScope } from './scopes.js';
 export const MCP_PATH = '/mcp';
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
-export const DEFAULT_MAX_SESSIONS = 32;
-export const DEFAULT_SESSION_IDLE_MS = 30 * 60_000;
+const DEFAULT_MAX_SESSIONS = 32;
+const DEFAULT_SESSION_IDLE_MS = 30 * 60_000;
 /** Bad tokens an address may send before it has to wait. */
 export const AUTH_FREE_FAILURES = 5;
 /** The wait doubles with every further bad token, up to this. */
-export const AUTH_MAX_DELAY_MS = 5 * 60_000;
+const AUTH_MAX_DELAY_MS = 5 * 60_000;
 /** An address's failures are forgotten this long after its last one. */
 const AUTH_FORGET_MS = 15 * 60_000;
 const AUTH_MAX_TRACKED = 10_000;
@@ -126,6 +126,11 @@ function sendJson(res: ServerResponse, status: number, body: unknown, headers: R
 
 function rpcError(res: ServerResponse, status: number, message: string, headers?: Record<string, string>): void {
   sendJson(res, status, { jsonrpc: '2.0', error: { code: -32000, message }, id: null }, headers);
+}
+
+/** A request without a session it can use: 400 when the header is missing, 404 when the session is unknown. */
+function noSession(res: ServerResponse, sessionId: string | string[] | undefined): void {
+  rpcError(res, sessionId === undefined ? 400 : 404, sessionId === undefined ? 'Missing mcp-session-id' : 'Unknown session');
 }
 
 function normalizeOrigin(origin: string): string {
@@ -316,7 +321,7 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
         return existing.transport.handleRequest(req, res, body);
       }
       if (sessionId !== undefined || !isInitializeRequest(body)) {
-        return rpcError(res, sessionId === undefined ? 400 : 404, sessionId === undefined ? 'Missing mcp-session-id' : 'Unknown session');
+        return noSession(res, sessionId);
       }
       if (sessions.size >= maxSessions && !evictOne()) {
         return rpcError(res, 503, `Too many active sessions (max ${maxSessions})`);
@@ -350,7 +355,7 @@ export async function runHttpServer(options: HttpServerOptions): Promise<Running
 
     if (req.method === 'GET' || req.method === 'DELETE') {
       if (!existing) {
-        return rpcError(res, sessionId === undefined ? 400 : 404, sessionId === undefined ? 'Missing mcp-session-id' : 'Unknown session');
+        return noSession(res, sessionId);
       }
       track(existing, res);
       return existing.transport.handleRequest(req, res);

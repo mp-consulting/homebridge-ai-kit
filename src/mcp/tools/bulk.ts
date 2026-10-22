@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Accessory, RegisterTools } from '../types.js';
 import { accessoryFilterShape, isSecurityWrite, selectAccessories } from '../accessory-select.js';
-import { checkCharacteristicValue } from './accessories.js';
+import { VALUE, type Value, checkCharacteristicValue, findCharacteristic } from './accessories.js';
 import { errorMessage, errorResult, handle, jsonResult } from './helpers.js';
 
 /** Default cap on how many accessories one call may change; `maxTargets` raises it up to {@link MAX_TARGETS}. */
@@ -10,8 +10,6 @@ export const MAX_TARGETS = 200;
 
 /** How many characteristic writes run at once. */
 const CONCURRENCY = 4;
-
-type Value = string | number | boolean;
 
 interface Planned {
   uniqueId: string;
@@ -46,7 +44,7 @@ function plan(accessory: Accessory, characteristicType: string, value: Value): P
   if (isSecurityWrite(accessory, characteristicType)) {
     return { ...base, reason: 'a lock, garage door or security system: use set_security_accessory, which asks the user' };
   }
-  const info = accessory.serviceCharacteristics?.find((c) => c.type.toLowerCase() === characteristicType.toLowerCase());
+  const info = findCharacteristic(accessory.serviceCharacteristics, characteristicType);
   if (!info) {
     return { ...base, reason: `no ${characteristicType} characteristic` };
   }
@@ -72,7 +70,7 @@ export const register: RegisterTools = (tool, client) => {
         uniqueIds: z.array(z.string().min(1)).min(1).max(MAX_TARGETS).optional().describe('The accessories to change (from list_accessories)'),
         filter: z.object(accessoryFilterShape).optional().describe('Pick the accessories like list_accessories does'),
         characteristicType: z.string().min(1).describe("The characteristic to set (e.g. 'On', 'Brightness', 'TargetTemperature')"),
-        value: z.union([z.string(), z.number(), z.boolean()]).describe('The value to set on every target'),
+        value: VALUE.describe('The value to set on every target'),
         dryRun: z.boolean().optional().describe('Only list what would change (current → new value per accessory); set nothing.'),
         maxTargets: z
           .number()

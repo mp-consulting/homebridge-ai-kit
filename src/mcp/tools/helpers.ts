@@ -5,6 +5,7 @@ import { redactSecrets, redactText } from '@mp-consulting/homebridge-ai-core';
 import type { AuditSink } from '../audit.js';
 import type { Scope } from '../scopes.js';
 import { scopeAllows } from '../scopes.js';
+import { isObject } from '../config-diff.js';
 
 export interface ToolConfig<Args extends ZodRawShapeCompat | undefined> {
   title: string;
@@ -123,7 +124,7 @@ export function structuredResult(structured: Record<string, unknown>, text: unkn
 
 /** An API answer as a structured object: objects pass through, anything else is wrapped as `{ value }`. */
 export function asObject(data: unknown): Record<string, unknown> {
-  return typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : { value: data };
+  return isObject(data) ? data : { value: data };
 }
 
 // ── Untrusted data ─────────────────────────────────────────────────
@@ -176,6 +177,12 @@ export function handle<A extends unknown[]>(
       return errorResult(`Error ${action}: ${errorMessage(error)}`);
     }
   };
+}
+
+/** Rounds to `digits` decimal places. */
+export function round(value: number, digits: number): number {
+  const f = 10 ** digits;
+  return Math.round(value * f) / f;
 }
 
 /** Copies only the listed keys that are present on `obj`. */

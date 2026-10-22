@@ -18,9 +18,10 @@ const TOPIC_BY_URI: Record<string, LiveTopic> = {
 };
 
 /** Lines of log returned by `homebridge://logs/recent`. */
-export const RECENT_LOG_LINES = 200;
+const RECENT_LOG_LINES = 200;
 
-function json(uri: string, data: unknown) {
+/** A JSON resource result. */
+export function json(uri: string, data: unknown) {
   return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data) }] };
 }
 
@@ -45,8 +46,8 @@ export function registerResources(server: McpServer, client: HomebridgeClient, l
     RESOURCE_URIS.logs,
     { title: 'Recent log', description: `The last ${RECENT_LOG_LINES} Homebridge log lines. Subscribe to follow the log.`, mimeType: 'text/plain' },
     async (uri) => {
-      const { text } = await client.getLogTail(64 * 1024);
-      const lines = tailLines(text, RECENT_LOG_LINES, { keepBlank: true });
+      const { text, truncated } = await client.getLogTail(64 * 1024);
+      const lines = tailLines(text, RECENT_LOG_LINES, { keepBlank: true, dropFirst: truncated });
       // Log lines are written by plugins: mark them as data, not instructions, for the model reading this resource.
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text: untrusted('homebridge-log', lines.join('\n')) }] };
     },

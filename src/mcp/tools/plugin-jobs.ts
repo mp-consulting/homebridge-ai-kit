@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { HomebridgeClient } from '../homebridge-client.js';
+import { type HomebridgeClient, requireGlassUi } from '../homebridge-client.js';
 import type { PluginJob, RegisterTools } from '../types.js';
 import { READ, handle, jsonResult } from './helpers.js';
 
@@ -61,43 +61,53 @@ export const register: RegisterTools = (tool, client) => {
     'install_plugin',
     {
       title: 'Install plugin',
-      description: 'Install a Homebridge plugin from npm. Runs as a background job on the Homebridge UI; returns the job status and npm output.',
+      description:
+        'Install a Homebridge plugin from npm. Runs as a background job on the Homebridge UI; returns the job status and npm output. ' +
+        'Check it with lookup_plugin first. Afterwards, get_plugin_config_schema shows the config block it needs (add it with patch_config), ' +
+        'and Homebridge must restart to load it. Needs Homebridge Glass UI.',
       inputSchema: { name, version, wait },
       annotations: WRITE,
     },
-    handle('installing plugin', async ({ name, version, wait }) => run(client.installPlugin(name, version), wait)),
+    handle('installing plugin', async ({ name, version, wait }) => run(requireGlassUi('Installing plugins', () => client.installPlugin(name, version)), wait)),
   );
 
   tool(
     'update_plugin',
     {
       title: 'Update plugin',
-      description: 'Update an installed Homebridge plugin to the latest (or a given) version. Check get_plugin_changelog for breaking changes first.',
+      description:
+        'Update an installed Homebridge plugin to the latest (or a given) version; returns the job status and npm output like install_plugin. ' +
+        'Check get_plugin_changelog for breaking changes first. Homebridge (or the plugin\'s child bridge) must restart to load it. Needs Homebridge Glass UI.',
       inputSchema: { name, version, wait },
       annotations: WRITE,
     },
-    handle('updating plugin', async ({ name, version, wait }) => run(client.updatePlugin(name, version), wait)),
+    handle('updating plugin', async ({ name, version, wait }) => run(requireGlassUi('Updating plugins', () => client.updatePlugin(name, version)), wait)),
   );
 
   tool(
     'uninstall_plugin',
     {
       title: 'Uninstall plugin',
-      description: 'Uninstall a Homebridge plugin. Its config.json blocks are left in place.',
+      description:
+        'Uninstall a Homebridge plugin; returns the job status and npm output like install_plugin. ' +
+        'Its config.json blocks and cached accessories are left in place (remove them with update_config and remove_cached_accessory when the user wants a clean removal); ' +
+        'restart Homebridge afterwards. Needs Homebridge Glass UI.',
       inputSchema: { name, wait },
       annotations: WRITE,
     },
-    handle('uninstalling plugin', async ({ name, wait }) => run(client.uninstallPlugin(name), wait)),
+    handle('uninstalling plugin', async ({ name, wait }) => run(requireGlassUi('Uninstalling plugins', () => client.uninstallPlugin(name)), wait)),
   );
 
   tool(
     'get_plugin_job',
     {
       title: 'Plugin job status',
-      description: 'Get the status and npm output of a plugin install, update or uninstall job.',
+      description:
+        'Follow a plugin install, update or uninstall job that was started with wait=false or outlasted the wait: ' +
+        'returns its status (running, succeeded, failed), start and finish times and the end of the npm output. Needs Homebridge Glass UI.',
       inputSchema: { jobId: z.string().min(1).describe('The jobId returned by install_plugin, update_plugin or uninstall_plugin') },
       annotations: READ,
     },
-    handle('getting plugin job', async ({ jobId }) => jsonResult(summarize(await client.getPluginJob(jobId)))),
+    handle('getting plugin job', async ({ jobId }) => jsonResult(summarize(await requireGlassUi('Plugin jobs', () => client.getPluginJob(jobId))))),
   );
 };
